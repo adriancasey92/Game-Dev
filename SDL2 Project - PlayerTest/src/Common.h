@@ -1,0 +1,12 @@
+#pragma once
+#include <string>
+#include <SDL.h>
+#include <SDL_image.h>
+#include <SDL_ttf.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include "SDL_log.h"
+#include <iostream>
+#include "vector"
+#include <memory>
+#include <sstream>
