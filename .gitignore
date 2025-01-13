@@ -398,3 +398,10 @@ FodyWeavers.xsd
 
 # JetBrains Rider
 *.sln.iml
+odin/demo/DEMO LOG/main.odin
+odin/demo/DEMO LOG/ols.json
+odin/demo/DEMO LOG/.vscode/launch.json
+odin/demo/DEMO LOG/.vscode/settings.json
+odin/demo/DEMO LOG/.vscode/tasks.json
+odin/demo/DEMO LOG/build/debug.exe
+odin/demo/RAYLIB DEMO/README.txt
