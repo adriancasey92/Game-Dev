@@ -1,0 +1,14 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "cppvsdbg",
+            "request": "launch",
+            "preLaunchTask": "Build Debug",
+            "name": "Run Debug (Windows)",
+            "program": "${workspaceFolder}/build/debug/game_debug.exe",
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+    ]
+}
