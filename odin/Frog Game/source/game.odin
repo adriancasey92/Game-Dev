@@ -129,15 +129,8 @@ Platform :: struct {
 	size_vec2:     Vec2,
 	texture_rect:  Rect,
 	rotation:      f32,
-	size:          Platform_Size,
 	friction_face: Direction,
 	corners:       [4]Rect,
-}
-
-Platform_Size :: enum {
-	small,
-	medium,
-	large,
 }
 
 Direction :: enum {
@@ -314,7 +307,6 @@ centered_pos_from_offset :: proc(pos: Vec2, size: Vec2) -> Vec2 {
 	return {pos.x - (size.x / 2), pos.y}
 }
 
-
 //returns center pos of player. 
 player_center :: proc() -> Vec2 {
 	dest := g.player.pos
@@ -332,7 +324,6 @@ player_center :: proc() -> Vec2 {
 
 	return dest
 }
-
 
 //Main logic update loop
 update :: proc() {
@@ -457,7 +448,6 @@ update_player :: proc(dt: f32) {
 		g.player.can_wall_climb = false
 	}
 
-
 	//Movement - depends on orientation
 	if rl.IsKeyDown(.LEFT) || rl.IsKeyDown(.A) {
 		switch (g.player.orientation) 
@@ -536,6 +526,10 @@ update_player :: proc(dt: f32) {
 				g.player.input.y += 1
 				if g.player.dir != .right {g.player.dir = .right}
 			}
+			if g.player.movement != .climbing_side && g.player.state == .grounded {
+				g.player.movement = .climbing_side
+				g.player.anim = animation_create(.Frog_Climb)
+			}
 		case .upside_down:
 			if g.player.last_orientation == .rot_right {g.player.input.x -= 1
 				if g.player.dir != .right {g.player.dir = .right}
@@ -564,6 +558,7 @@ update_player :: proc(dt: f32) {
 			}
 		}
 	}
+
 	//Tongue attack?	
 	if rl.IsMouseButtonPressed(.LEFT) {
 		if g.player.can_attack {
@@ -575,8 +570,6 @@ update_player :: proc(dt: f32) {
 			} else if g.player.dir == .right && pos.x < g.player.pos.x {
 				g.player.dir = .left
 			}
-
-
 		}
 	}
 
@@ -592,13 +585,12 @@ update_player :: proc(dt: f32) {
 		}
 	} else {
 		//if rotated and not climbing
-		if g.player.orientation == .rot_left ||
-		   g.player.orientation == .rot_left && g.player.input.y == 0 {
+		if (g.player.orientation == .rot_left || g.player.orientation == .rot_right) &&
+		   g.player.input.y == 0 {
 			if g.player.movement != .climbing_side {
 				g.player.movement = .climbing_side
 				g.player.anim = animation_create(.Frog_Climb)
 			}
-
 		} else if g.player.orientation == .upside_down {
 
 		}
@@ -1043,12 +1035,12 @@ draw_player :: proc(p: Player) {
 	case .norm:
 	case .rot_left:
 		rotation = 270
-		dest.x += (anim_texture.rect.width / 2) - .5
-		dest.y -= anim_texture.rect.height * 1.5 - 1
+		dest.x += (anim_texture.rect.width * .5) + 2
+		dest.y -= (anim_texture.rect.width) + 2
 	case .rot_right:
 		rotation = 90
-		dest.x -= (anim_texture.rect.width) - 2
-		dest.y -= (anim_texture.rect.width / 2) - 1
+		dest.x -= (anim_texture.rect.width) + 2
+		dest.y -= (anim_texture.rect.width * .5)
 	case .upside_down:
 		dest.y += (anim_texture.rect.height) * 2 - 1
 	}
@@ -1267,8 +1259,6 @@ init_window :: proc() {
 init :: proc() {
 	fmt.printf("Initializing game\n")
 	g = new(Game_Memory)
-	running_multiplier = 2
-	sliding_speed = 1000
 	DEBUG_DRAW = false
 	//load the raw data into atlas_image
 	atlas_image := rl.LoadImageFromMemory(".png", raw_data(ATLAS_DATA), i32(len(ATLAS_DATA)))
@@ -1290,7 +1280,6 @@ init :: proc() {
 			rl.LoadWaveFromMemory(".wav", raw_data(WIN_SOUND), i32(len(WIN_SOUND))),
 		),
 		run = true,
-		some_number = 100,
 		current_level = 0,
 		player = {
 			anim = animation_create(.Frog_Idle),
@@ -1356,7 +1345,6 @@ init_level :: proc(level_num: int) {
 		size_vec2    = {96, 16},
 		rotation     = 0,
 		texture_rect = atlas_textures[.Platform_Large].rect,
-		size         = .large,
 	}
 	p.pos_rect = pos_to_rect(p.pos, p.size_vec2)
 	p.corners = get_rect_corners(p.pos_rect)

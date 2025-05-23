@@ -1081,6 +1081,7 @@ update :: proc() {
 	}
 }
 
+//Handles the ships moving to opposite edge
 handle_collisions :: proc() {
 	// Collision logic: player vs walls
 
