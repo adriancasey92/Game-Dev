@@ -37,9 +37,15 @@ texture: rl.Texture
 
 //Dummy struct
 Canvas :: struct {
-	size:   Vec2,
-	pos:    Vec2,
-	pixels: [CANVASWIDTH][CANVASHEIGHT]f32,
+	size:    Vec2,
+	pos:     Vec2,
+	pixels:  [WIDTH * HEIGHT]Pixel,
+	checked: bool,
+}
+
+Pixel :: struct {
+	val:     f32,
+	checked: bool,
 }
 
 Grid :: struct {
@@ -90,20 +96,55 @@ init_program :: proc() {
 	canvas = {
 		size = {CANVASWIDTH, CANVASHEIGHT},
 	}
+	//init
+	for x := 0; x < int(canvas.size.x); x += 1 {
+		for y := 0; y < int(canvas.size.y); y += 1 {
+			pos := ((y * x) + x)
+			canvas.pixels[pos].checked = false
+		}
+	}
 
 	canvas.pos.x = 0 + (WIDTH - canvas.size.x) / 2
 	canvas.pos.y = 0 + (HEIGHT - canvas.size.y) / 2
 	randPos: Vec2
 	//Make random canvas
-	for i, idx in canvas.pixels {
-		for j, idx2 in canvas.pixels[idx] {
-			canvas.pixels[idx][idx2] = noise.noise_2d(0, {f64(idx), f64(idx2)})
-			//randPos = getrandfloat(i32(idx), i32(idx2))
+
+	startTime := rl.GetTime()
+	count := 0
+	for y := 0; y < int(canvas.size.y); {
+		for x := 0; x < int(canvas.size.x); {
+			count += 1
+			fmt.printf("Count: %i\n", count)
+			xrand := rand_uniform(0, CANVASWIDTH)
+			yrand := rand_uniform(0, CANVASHEIGHT)
+
+			//flat array?
+			pos := (yrand * xrand + xrand)
+			//if not checked already
+			if !canvas.pixels[int(pos)].checked {
+				canvas.pixels[int(pos)].val = noise.noise_2d(i64(rand.uint64()), {f64(x), f64(y)})
+				canvas.pixels[int(pos)].checked = true
+			}
+
+			//only increment if we have found a pixel that is unchecked
+			if canvas.pixels[int(pos)].checked {
+				fmt.printf("Pixel created!\n")
+				x += 1
+			}
+			if x == WIDTH {
+				y += 1
+			}
+			//canvas.pixels[idx][idx2] = 
+
 
 			//Loop over each corner for every point in the grid
 		}
 	}
-	image = rl.GenImagePerlinNoise(CANVASWIDTH, CANVASHEIGHT, 0, 0, 1)
+	endTime := rl.GetTime()
+
+	totalTime := endTime - startTime
+	fmt.printf("Generated in %.2f seconds!\n", totalTime)
+	image = rl.GenImagePerlinNoise(CANVASWIDTH, CANVASHEIGHT, 0, 0, rand_uniform(0, 100))
 	texture = rl.LoadTextureFromImage(image)
 }
 
@@ -125,6 +166,7 @@ main :: proc() {
 
 	//Program loop
 	for !rl.WindowShouldClose() {
+		handle_input()
 		update()
 		draw()
 		free_all(context.temp_allocator)
@@ -143,31 +185,10 @@ update :: proc() {
 }
 
 handle_input :: proc() {
-	if rl.IsKeyPressed(.W) {
-
-	}
-	if rl.IsKeyPressed(.S) {
-
-	}
-	if rl.IsKeyPressed(.A) {
-
-	}
-	if rl.IsKeyPressed(.D) {
-
-	}
-	if rl.IsKeyPressed(.LEFT_SHIFT) {
-
-	}
-	if rl.IsKeyReleased(.LEFT_SHIFT) {
-
+	if rl.IsKeyPressed(.R) {
+		init_program()
 	}
 
-	if rl.IsMouseButtonPressed(.LEFT) {
-
-	}
-	if rl.IsMouseButtonPressed(.RIGHT) {
-
-	}
 }
 
 checkCollisions :: proc() {
@@ -186,13 +207,10 @@ draw :: proc() {
 }
 
 drawCanvas :: proc() {
-	for i, idx in canvas.pixels {
-		for j, idx2 in canvas.pixels[idx] {
-			rl.DrawPixel(
-				i32(canvas.pos.x) + i32(idx),
-				i32(canvas.pos.y) + i32(idx2),
-				rl.ColorFromHSV(0, 0, canvas.pixels[idx][idx2]),
-			)
+	for y := 0; y < HEIGHT; y += 1 {
+		for x := 0; x < WIDTH; x += 1 {
+			pos := (y * x + x)
+			rl.DrawPixel(i32(x), i32(y), rl.ColorFromHSV(0, 0, canvas.pixels[pos].val))
 		}
 	}
 }
