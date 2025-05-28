@@ -77,7 +77,7 @@ update_player :: proc(dt: f32) {
 	//old_pos := p.pos
 	if !p.is_on_ground {
 		p.air_time += dt
-		if p.air_time > .75 {
+		if p.air_time > .55 {
 			if p.movement != .falling {
 				p.movement = .falling
 				p.anim = animation_create(.Frog_Fall)
@@ -383,10 +383,11 @@ update_player :: proc(dt: f32) {
 	}
 
 	//corner collision and wall walking/climbing detection
-	for platform in level.platforms {
+	for platform, idx in level.platforms {
 		//check if player is colliding with the corner of a platform
-		for c, idx in platform.corners {
+		for c, c_idx in platform.corners {
 			if rl.CheckCollisionRecs(c, p.corner_collider) && p.movement != .jumping {
+				fmt.printf("Player collided with corner: %i,%i\n", idx, c_idx)
 				// Switch based on player orientation is easiest way to seperate logic
 				switch (p.orientation) {
 				//Player is oriented normally
@@ -394,7 +395,7 @@ update_player :: proc(dt: f32) {
 					//Player has leftshift down to enable wall climbing
 					if p.can_wall_climb {
 						//if player is facing left and collides with left corner of a platform
-						if idx == 0 && p.dir == .left {
+						if c_idx == 0 && p.dir == .left {
 							p.last_orientation = .norm
 							p.last_orientation = .norm
 							p.orientation = .rot_left
@@ -402,7 +403,7 @@ update_player :: proc(dt: f32) {
 							p.pos.x = c.x
 							p.pos.y = c.y + c.height + 2
 							//if player is facing right and collides with right corner of a platform
-						} else if idx == 1 && p.dir == .right {
+						} else if c_idx == 1 && p.dir == .right {
 							p.last_orientation = .norm
 							p.orientation = .rot_right
 							p.wall_climbing = true
@@ -411,13 +412,13 @@ update_player :: proc(dt: f32) {
 						}
 					}
 				case .rot_left:
-					if idx == 0 && p.dir == .right {
+					if c_idx == 0 && p.dir == .right {
 						p.last_orientation = .rot_left
 						p.orientation = .norm
 						p.wall_climbing = false
 						p.pos.x = c.x + c.width
 						p.pos.y = c.y
-					} else if idx == 2 && p.dir == .left {
+					} else if c_idx == 2 && p.dir == .left {
 						p.last_orientation = .rot_left
 						p.orientation = .upside_down
 						p.wall_climbing = true
@@ -425,27 +426,27 @@ update_player :: proc(dt: f32) {
 						p.pos.y = platform.pos.y + platform.pos_rect.height
 					}
 				case .rot_right:
-					if idx == 1 && p.dir == .left {
+					if c_idx == 1 && p.dir == .left {
 						p.last_orientation = .rot_right
 						p.orientation = .norm
 						p.wall_climbing = false
 						p.pos.x = c.x
 						p.pos.y = c.y
-					} else if idx == 3 && p.dir == .right {
+					} else if c_idx == 3 && p.dir == .right {
 						p.last_orientation = .rot_right
 						p.orientation = .upside_down
 						p.wall_climbing = true
 						p.pos.x = c.x
-						p.pos.y = platform.pos_rect.height
+						p.pos.y = platform.pos.y + platform.pos_rect.height
 					}
 				//dir is reversed!
 				case .upside_down:
-					if idx == 2 && p.dir == .right {
+					if c_idx == 2 && p.dir == .right {
 						p.last_orientation = .upside_down
 						p.orientation = .rot_left
 						p.pos.x = c.x
 						p.pos.y = c.y
-					} else if idx == 3 && p.dir == .left {
+					} else if c_idx == 3 && p.dir == .left {
 						p.last_orientation = .upside_down
 						p.orientation = .rot_right
 						p.pos.x = platform.pos.x + platform.pos_rect.width
@@ -574,8 +575,9 @@ rotate_player :: proc() {
 		} else if p.dir == .right {
 			//Right = facing up 
 			p.corner_collider = {p.pos.x, p.pos.y + 3, 1, 1}
-			//p.corner_collider = {p.pos.x + 4, p.pos.y - 2, 4, 4}
 			p.feet_collider = {p.rect.x + p.rect.width - 1, p.rect.y + p.rect.height / 2, 1, 6}
+			p.head_collider = {p.rect.x, p.rect.y + (p.rect.height * .5), 1, 4}
+			p.face_collider = {p.pos.x - (p.rect.width * .75), p.pos.y + (p.rect.height / 2), 4, 1}
 		}
 
 	//hanging on a wall on the left of player
@@ -628,15 +630,10 @@ rotate_player :: proc() {
 //always draws the player using the player_handle
 draw_player :: proc(fade: f32) {
 	p := get_player()
-
-	fmt.printf("Player pos: %.2f,%.2f\n", p.pos.x, p.pos.y)
 	// Fetch the texture for the current frame of the animation.
-
 	anim_texture := animation_atlas_texture(p.anim)
-
 	// The region inside atlas.png where this animation frame lives
 	atlas_rect := anim_texture.rect
-
 	// The texture has four offset fields: offset_top, right, bottom and left. The offsets records
 	// the distance between the pixels in the atlas and the edge of the original document in the
 	// image editing software. Since the atlas is tightly packed, any empty pixels are removed.
@@ -654,12 +651,10 @@ draw_player :: proc(fade: f32) {
 		atlas_rect.width = -atlas_rect.width
 		offset.x = anim_texture.offset_right
 	}
-
 	if p.flip_y {
 		atlas_rect.height = -atlas_rect.height
 		offset.y = anim_texture.offset_bottom
 	}
-
 	// The dest rectangle tells us where on screen to draw the player.
 	dest := Rect {
 		p.pos.x + offset.x,
@@ -699,8 +694,8 @@ draw_player :: proc(fade: f32) {
 		rl.DrawLineEx(player_center(), g.player.tongue.pos, 1, rl.PINK)
 		//rl.DrawRectangle(i32(g.player.tongue.pos.x), i32(g.player.tongue.pos.y), 1, 1, rl.RED)
 	}*/
-	fmt.printf("Dest rect pos: %.2f,%.2f\n", dest.x, dest.y)
-	rl.DrawTexturePro(atlas, atlas_rect, dest, origin, rotation, rl.Fade(rl.WHITE, 0))
+
+	rl.DrawTexturePro(atlas, atlas_rect, dest, origin, rotation, rl.Fade(rl.WHITE, fade))
 
 	//DEBUG
 	if DEBUG_DRAW {draw_player_debug()}
@@ -836,7 +831,7 @@ draw_player_colliders :: proc() {
 		rl.BLUE,
 	)
 	rl.DrawRectangleRec(p.feet_collider, rl.YELLOW)
-	//rl.DrawRectangleRec(g.player.face_collider, rl.WHITE)
+	rl.DrawRectangleRec(p.face_collider, rl.YELLOW)
 	//rl.DrawRectangleRec(g.player.head_collider, rl.BLACK)
 	rl.DrawRectangleLinesEx(p.corner_collider, .25, rl.PINK)
 	rl.DrawPixelV(p.pos, rl.PURPLE)

@@ -34,7 +34,7 @@ import rl "vendor:raylib"
 
 
 //Constants
-PIXEL_WINDOW_HEIGHT :: 300
+CAMERA_ZOOM :: 200
 GRAVITY :: 500
 
 DEBUG_DRAW: bool
@@ -59,6 +59,7 @@ Platform :: struct {
 	rotation:      f32,
 	friction_face: Entity_Direction,
 	corners:       [4]Rect,
+	index:         int,
 }
 
 Game_State :: enum {
@@ -89,6 +90,7 @@ Game_Memory :: struct {
 	state:            Game_State,
 	level:            int,
 	won:              bool,
+	game_camera:      rl.Camera2D,
 
 	//Resources
 	atlas:            rl.Texture2D,
@@ -218,6 +220,8 @@ update :: proc() {
 		update_play()
 	case .quadtree:
 		update_quadtree()
+	case .pause:
+		update_pause(&g.pause_menu)
 	}
 }
 
@@ -225,19 +229,15 @@ update_play :: proc() {
 	dt = rl.GetFrameTime()
 	real_dt = dt
 
-	if rl.IsKeyPressed(.F4) {
-		DEBUG_DRAW = !DEBUG_DRAW
-	}
-
 	if rl.IsKeyPressed(.C) {
 		DEBUG_DRAW_COLLIDERS = !DEBUG_DRAW_COLLIDERS
 	}
 
 	//Pause game 
-	//unloads level, 
 	if rl.IsKeyPressed(.ESCAPE) {
 		//delete_current_level()
-		g.in_menu = !g.in_menu
+		g.state = .pause
+		//g.in_menu = !g.in_menu
 		g.finished = false
 		g.won = false
 		return
@@ -333,8 +333,44 @@ update_quadtree :: proc() {
 	build_quadtree()
 }
 
-draw :: proc() {
+update_pause :: proc(menu: ^Menu) {
 
+	if rl.IsKeyPressed(.ESCAPE) {
+		g.state = .play
+	}
+
+	if rl.IsKeyPressed(.UP) || rl.IsKeyPressed(.W) {
+		menu.selected -= 1
+		if menu.selected < 0 {
+			menu.selected = menu.num_options - 1
+		}
+	} else if rl.IsKeyPressed(.DOWN) || rl.IsKeyPressed(.TAB) || rl.IsKeyPressed(.S) {
+		menu.selected += 1
+		if menu.selected >= menu.num_options {
+			menu.selected = 0
+		}
+	}
+
+	if rl.IsKeyPressed(.ENTER) {
+		if menu.selected == 0 {
+			// Start Game
+			g.state = .play
+			//init_level(g.level)
+			//init_quadtree(&quadtree, 25, 15)
+			fmt.printf("Starting game...\n")
+		} else if menu.selected == 1 {
+			// Options                
+			//g.state = .options
+			fmt.printf("Opening options...\n")
+		} else if menu.selected == 2 {
+			// Exit 
+			fmt.printf("Shutting down...\n")
+			g.run = false
+		}
+	}
+}
+
+draw :: proc() {
 	#partial switch (g.state) 
 	{
 	case .mainMenu:
@@ -343,22 +379,22 @@ draw :: proc() {
 		draw_play()
 	case .quadtree:
 		draw_quadtree()
+	case .pause:
+		//we still draw the game in the background with a fade
+		draw_pause_menu()
 	}
-
 }
 
 draw_play :: proc() {
+	fade := f32(1)
 	rl.BeginDrawing()
 	rl.ClearBackground(rl.SKYBLUE)
-	fade := f32(0)
 	//rl.ClearBackground(rl.SKYBLUE)
 	//Draw using game_camera
 	rl.BeginMode2D(game_camera())
 	{
 		draw_level(fade)
 		draw_player(fade)
-		//draw_menu
-
 	}
 	rl.EndMode2D()
 	rl.BeginMode2D(ui_camera())
@@ -383,6 +419,7 @@ draw_quadtree :: proc() {
 	rl.EndDrawing()
 */
 }
+
 
 game_should_run :: proc() -> bool {
 	when ODIN_OS != .JS {

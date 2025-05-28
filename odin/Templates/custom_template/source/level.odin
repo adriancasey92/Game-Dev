@@ -96,14 +96,22 @@ init_level :: proc(level_num: int) {
 //Fade draws the level with a fade
 draw_level :: proc(fade: f32) {
 	// Draw platforms
-	for p in level.platforms {
+	for p, idx in level.platforms {
 		rl.DrawTextureRec(g.atlas, p.texture_rect, p.pos, rl.Fade(rl.WHITE, fade))
 		if DEBUG_DRAW {
 			rl.DrawRectangleLinesEx(p.pos_rect, 1, rl.Fade(rl.RED, fade))
 			//text position
 			text := rl.TextFormat("%.2f, %.2f", p.pos.x, p.pos.y)
-			text_size := rl.MeasureTextEx(rl.GetFontDefault(), text, 5, 2)
-			rl.DrawTextEx(
+			//text_size := rl.MeasureTextEx(rl.GetFontDefault(), text, 5, 2)
+
+			draw_text_centered(
+				text,
+				i32(p.pos.x + p.pos_rect.width / 2),
+				i32(p.pos.y + p.pos_rect.height / 2),
+				5,
+				rl.Fade(rl.RED, fade),
+			)
+			/*rl.DrawTextEx(
 				rl.GetFontDefault(),
 				text,
 				{
@@ -113,11 +121,18 @@ draw_level :: proc(fade: f32) {
 				5,
 				2,
 				rl.Fade(rl.RED, fade),
-			)
+			)*/
 		}
 		if DEBUG_DRAW_COLLIDERS {
-			for c in p.corners {
+			for c, c_idx in p.corners {
 				rl.DrawRectangleLinesEx(c, 1, rl.YELLOW)
+				draw_text_centered(
+					rl.TextFormat("%i,%i", idx, c_idx),
+					i32(c.x),
+					i32(c.y),
+					4,
+					rl.BLACK,
+				)
 			}
 		}
 	}
