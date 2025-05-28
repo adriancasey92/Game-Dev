@@ -9,6 +9,6 @@ game_camera :: proc() -> rl.Camera2D {
 }
 
 ui_camera :: proc() -> rl.Camera2D {
-	//zoom = f32(rl.GetScreenHeight()) / PIXEL_WINDOW_HEIGHT
+	//zoom := f32(rl.GetScreenHeight()) / PIXEL_WINDOW_HEIGHT
 	return {}
 }

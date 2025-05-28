@@ -1,9 +1,9 @@
 # Odin - Custom Template!
 
 This template contains the following:
-* Hot-Reload template - Karl Z.
-* Handle-Map library - Karl Z.
-* Atlas-Map library - Karl Z.
+* [Hot-Reload template](https://github.com/karl-zylinski/odin-raylib-hot-reload-game-template) - Karl Z.
+* [Handle-Map library](https://github.com/karl-zylinski/odin-handle-map) - Karl Z.
+* [Atlas-Map library](https://github.com/karl-zylinski/atlas-builder) - Karl Z.
 
 I have also created the following:
 

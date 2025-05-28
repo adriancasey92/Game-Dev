@@ -65,20 +65,15 @@ Game_State :: enum {
 	intro,
 	play,
 	quadtree,
+	options,
 	edit,
 	pause,
 	mainMenu,
 }
 
 Edit_Screen :: struct {
-	menu:          Menu,
+	//menu:          Menu,
 	selection_idx: i32,
-}
-
-Menu :: struct {
-	size:  Vec2,
-	pos:   Vec2,
-	nodes: [dynamic]Edit_Platforms,
 }
 
 Edit_Platforms :: struct {
@@ -117,6 +112,10 @@ Game_Memory :: struct {
 	//entity_top_count: u64,
 	//world_name:       string,
 	player_handle:    Entity_Handle,
+	main_menu:        Menu,
+	options_menu:     Menu,
+	pause_menu:       Menu,
+	state_changed:    bool,
 }
 
 quadtree: Quadtree
@@ -148,6 +147,7 @@ init_window :: proc() {
 
 //Initialise everything to do with the game+systems here
 init :: proc() {
+	fmt.printf("Init\n")
 	g = new(Game_Memory)
 
 	//load the raw data into atlas_image
@@ -192,8 +192,8 @@ init :: proc() {
 	}
 
 	// Set up current level
+	init_menu()
 	init_level(g.level)
-	init_quadtree(&quadtree, 25, 15)
 	game_hot_reloaded(g)
 }
 
@@ -205,12 +205,15 @@ update :: proc() {
 	if rl.IsKeyPressed(.ENTER) && rl.IsKeyDown(.LEFT_ALT) {
 		rl.ToggleBorderlessWindowed()
 	}
-
+	if rl.IsKeyPressed(.F4) {
+		fmt.printf("DEBUG TOGGLED!\n")
+		DEBUG_DRAW = !DEBUG_DRAW
+	}
 
 	#partial switch (g.state) 
 	{
 	case .mainMenu:
-		update_menu()
+		update_menu(&g.main_menu)
 	case .play:
 		update_play()
 	case .quadtree:
@@ -218,16 +221,9 @@ update :: proc() {
 	}
 }
 
-//UPDATE LOOPS 
-update_menu :: proc() {
-	dt = rl.GetFrameTime()
-	real_dt = dt
-}
-
 update_play :: proc() {
 	dt = rl.GetFrameTime()
 	real_dt = dt
-
 
 	if rl.IsKeyPressed(.F4) {
 		DEBUG_DRAW = !DEBUG_DRAW
@@ -330,10 +326,12 @@ update_play :: proc() {
 }
 
 update_quadtree :: proc() {
+	fmt.printf("Update quadtree\n")
 	dt = rl.GetFrameTime()
 	real_dt = dt
-}
 
+	build_quadtree()
+}
 
 draw :: proc() {
 
@@ -346,45 +344,21 @@ draw :: proc() {
 	case .quadtree:
 		draw_quadtree()
 	}
-}
 
-draw_main_menu :: proc() {
-	fade := f32(0.5)
-	rl.BeginDrawing()
-	rl.ClearBackground(rl.SKYBLUE)
-	//GAME DRAW
-	rl.BeginMode2D(game_camera())
-	{
-		draw_level(fade)
-		draw_player(fade)
-	}
-	rl.EndMode2D()
-
-	//UI DRAW
-	rl.BeginMode2D(ui_camera())
-	{
-		//draw_menu
-		rl.DrawText(
-			rl.TextFormat("Main Menu"),
-			rl.GetScreenHeight() / 2,
-			rl.GetScreenWidth() / 2,
-			25,
-			rl.WHITE,
-		)
-	}
-	rl.EndMode2D()
-	rl.EndDrawing()
 }
 
 draw_play :: proc() {
-	fade := f32(0)
 	rl.BeginDrawing()
 	rl.ClearBackground(rl.SKYBLUE)
+	fade := f32(0)
+	//rl.ClearBackground(rl.SKYBLUE)
 	//Draw using game_camera
 	rl.BeginMode2D(game_camera())
 	{
 		draw_level(fade)
 		draw_player(fade)
+		//draw_menu
+
 	}
 	rl.EndMode2D()
 	rl.BeginMode2D(ui_camera())
@@ -393,9 +367,9 @@ draw_play :: proc() {
 }
 
 draw_quadtree :: proc() {
-	fade := f32(.9)
+	/*fade := f32(.9)
 	rl.BeginDrawing()
-	rl.ClearBackground(rl.SKYBLUE)
+	//rl.ClearBackground(rl.SKYBLUE)
 	//Draw using game_camera
 	draw_quad_tree(&quadtree)
 	rl.BeginMode2D(game_camera())
@@ -407,9 +381,8 @@ draw_quadtree :: proc() {
 	rl.BeginMode2D(ui_camera())
 	rl.EndMode2D()
 	rl.EndDrawing()
-
+*/
 }
-
 
 game_should_run :: proc() -> bool {
 	when ODIN_OS != .JS {
@@ -418,7 +391,6 @@ game_should_run :: proc() -> bool {
 			return false
 		}
 	}
-
 	return g.run
 }
 
@@ -453,7 +425,6 @@ reload_global_data :: proc() {
 	ATLAS_DATA :: #load("atlas.png")
 	atlas_image := rl.LoadImageFromMemory(".png", raw_data(ATLAS_DATA), i32(len(ATLAS_DATA)))
 	g.atlas = rl.LoadTextureFromImage(atlas_image)
-
 	rl.UnloadImage(atlas_image)
 	edit_tex = 0
 }
@@ -489,7 +460,7 @@ reset_handles :: proc() {
 // and free the memory allocated for game memory.
 shutdown :: proc() {
 	delete(level.platforms)
-	delete(level.edit_screen.menu.nodes)
+	//delete(level.edit_screen.menu.nodes)
 	hm.delete(&g.entities)
 	mem.free(g.font.recs)
 	mem.free(g.font.glyphs)

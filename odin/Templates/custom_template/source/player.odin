@@ -119,7 +119,7 @@ update_player :: proc(dt: f32) {
 			}
 			if p.movement != .walking && p.is_on_ground {
 				p.movement = .walking
-				fmt.printf("Setting animation : .Frog_Move\n")
+				//fmt.printf("Setting animation : .Frog_Move\n")
 				p.anim = animation_create(.Frog_Move)
 			}
 		//hanging onto right side of wall/platform
@@ -628,6 +628,8 @@ rotate_player :: proc() {
 //always draws the player using the player_handle
 draw_player :: proc(fade: f32) {
 	p := get_player()
+
+	fmt.printf("Player pos: %.2f,%.2f\n", p.pos.x, p.pos.y)
 	// Fetch the texture for the current frame of the animation.
 
 	anim_texture := animation_atlas_texture(p.anim)
@@ -697,7 +699,8 @@ draw_player :: proc(fade: f32) {
 		rl.DrawLineEx(player_center(), g.player.tongue.pos, 1, rl.PINK)
 		//rl.DrawRectangle(i32(g.player.tongue.pos.x), i32(g.player.tongue.pos.y), 1, 1, rl.RED)
 	}*/
-	rl.DrawTexturePro(atlas, atlas_rect, dest, origin, rotation, rl.Fade(rl.WHITE, fade))
+	fmt.printf("Dest rect pos: %.2f,%.2f\n", dest.x, dest.y)
+	rl.DrawTexturePro(atlas, atlas_rect, dest, origin, rotation, rl.Fade(rl.WHITE, 0))
 
 	//DEBUG
 	if DEBUG_DRAW {draw_player_debug()}
@@ -790,6 +793,14 @@ draw_player_debug :: proc() {
 		rl.GetFontDefault(),
 		rl.TextFormat("Player Animation: %v", p.anim.atlas_anim),
 		{text_pos.x + 2, text_pos.y + f32(pad) + f32(font_size)},
+		font_size,
+		.5,
+		rl.RED,
+	)
+	rl.DrawTextEx(
+		rl.GetFontDefault(),
+		rl.TextFormat("Atlas size: %v,%v", g.atlas.width, g.atlas.height),
+		{text_pos.x + 2 + f32(col_2), text_pos.y + f32(pad) + f32(font_size)},
 		font_size,
 		.5,
 		rl.RED,

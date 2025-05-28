@@ -22,15 +22,16 @@ init_level :: proc(level_num: int) {
 
 	append(&level.platforms, p)
 
-	/*p = {
-		pos          = {0, 250},
-		size         = {64, 16},
+	p = {
+		pos          = centered_pos_from_offset({0, 250}, {64, 16}),
+		size_vec2    = {64, 16},
 		rotation     = 0,
 		texture_rect = atlas_textures[.Platform_Medium].rect,
 	}
-	p.pos_rect = pos_to_rect(p.pos, p.size)
+	p.pos_rect = pos_to_rect(p.pos, p.size_vec2)
+	p.corners = get_rect_corners(p.pos_rect)
 	append(&level.platforms, p)
-	*/
+
 	/*if level, ok := load_level_data(level); ok {
 		fmt.printf("Loaded level: %i\n", level)
 	} else {
@@ -94,19 +95,7 @@ init_level :: proc(level_num: int) {
 
 //Fade draws the level with a fade
 draw_level :: proc(fade: f32) {
-	//width := rl.GetScreenWidth()
-	//height := rl.GetScreenHeight()
-	//Draw background tiles
-	/*if DEBUG_DRAW {
-		for x := -width; x < width; x += 10 {
-			rl.DrawLine(x, -height, x, height, rl.WHITE)
-			for y := -height; y < height; y += 10 {
-				rl.DrawLine(x, y, width, y, rl.WHITE)
-			}
-		}
-	}*/
 	// Draw platforms
-
 	for p in level.platforms {
 		rl.DrawTextureRec(g.atlas, p.texture_rect, p.pos, rl.Fade(rl.WHITE, fade))
 		if DEBUG_DRAW {
