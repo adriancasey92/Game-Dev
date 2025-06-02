@@ -321,37 +321,79 @@ update_player :: proc(dt: f32) {
 	} else {
 		//facing left
 		if p.dir == .left {
-			p.head_collider = {p.pos.x - (p.rect.width / 2) + 2, p.rect.y, 4, 1}
-			p.feet_collider = {p.pos.x, p.pos.y, p.rect.width / 2, 1}
-			p.face_collider = {p.pos.x - (p.rect.width / 2), p.pos.y - (p.rect.height * .75), 1, 4}
-			p.corner_collider = {p.pos.x + 4, p.pos.y, 1, 1}
-
+			if p.movement == .falling {
+				p.head_collider = {p.pos.x - (p.rect.width / 2) + 2, p.rect.y, 4, 1}
+				p.feet_collider = {p.pos.x, p.pos.y, p.rect.width / 2, 1}
+				p.face_collider = {
+					p.pos.x - (p.rect.width / 2),
+					p.pos.y - (p.rect.height * .75),
+					1,
+					4,
+				}
+				p.corner_collider = {p.pos.x + 4, p.pos.y, 1, 1}
+			} else {
+				p.head_collider = {p.pos.x - (p.rect.width / 2) + 2, p.rect.y, 4, 1}
+				p.feet_collider = {p.pos.x + 2, p.pos.y, p.rect.width / 2 - 2, 1}
+				p.face_collider = {
+					p.pos.x - (p.rect.width / 2),
+					p.pos.y - (p.rect.height * .75),
+					1,
+					4,
+				}
+				p.corner_collider = {p.pos.x + 4, p.pos.y, 1, 1}
+			}
 			//facing right
 		} else if p.dir == .right {
-			p.head_collider = {p.pos.x, p.rect.y, 4, 1}
-			p.feet_collider = {p.rect.x + 1, p.pos.y, p.rect.width / 2, 1}
-			p.face_collider = {p.rect.x + p.rect.width - 1, p.pos.y - (p.rect.height * .75), 1, 4}
-			p.corner_collider = {p.pos.x - 4, p.pos.y, 1, 1}
+			if p.movement == .falling {
+				p.head_collider = {p.pos.x, p.rect.y, 4, 1}
+				p.feet_collider = {p.rect.x + 1, p.pos.y, p.rect.width / 2, 1}
+				p.face_collider = {p.rect.x + p.rect.width, p.pos.y - p.rect.width / 2, 1, 4}
+				p.corner_collider = {p.pos.x - 4, p.pos.y, 1, 1}
+			} else {
+				p.head_collider = {p.pos.x, p.rect.y, 4, 1}
+				p.feet_collider = {p.rect.x, p.pos.y, p.rect.width / 2 - 1, 1}
+				p.face_collider = {p.rect.x + p.rect.width, p.pos.y - (p.rect.height * .75), 1, 4}
+				p.corner_collider = {p.pos.x - 4, p.pos.y, 1, 1}
+			}
+
 		}
 	}
 
 	//checking if we have collided with feet collider - if we aren't moving we are idle. 
 	for platform in level.platforms {
-		//feet collider
-		if p.action != .jumping {
-			if !p.side_jump {
-				if rl.CheckCollisionRecs(p.feet_collider, platform.pos_rect) {
-					p.is_on_ground = true
-					p.vel.y = 0
-					p.pos.y = platform.pos_rect.y - p.size.y - 1
+		if platform.exists {
+			//feet collider
+			if p.action != .jumping {
+				if !p.side_jump {
+					// if we fall off the left side of a platform and we collide with our head, offset player by the platform pos - player.width
+					if p.movement == .falling {
+						if p.dir == .right {
+							if rl.CheckCollisionRecs(p.head_collider, platform.faces[3]) {
+								p.pos.x = platform.faces[3].x - p.rect.width + 1
 
-					if p.movement != .idle {
-						if p.input.x == 0 {
-							p.movement = .idle
-							p.anim = animation_create(.Frog_Idle)
+							}
 						}
 					}
-					has_collided = true
+					if rl.CheckCollisionRecs(p.feet_collider, platform.pos_rect) {
+
+						//if face collides with left side of platform then we do not set the player on top
+						//set player to be offset by the platform edge
+						if p.dir == .right && p.pos.y < platform.pos_rect.y - 1 {
+							return
+						}
+
+						p.is_on_ground = true
+						p.vel.y = 0
+						p.pos.y = platform.pos_rect.y - p.size.y - 1
+
+						if p.movement != .idle {
+							if p.input.x == 0 {
+								p.movement = .idle
+								p.anim = animation_create(.Frog_Idle)
+							}
+						}
+						has_collided = true
+					}
 				}
 			}
 		}
@@ -383,74 +425,76 @@ update_player :: proc(dt: f32) {
 	}
 
 	//corner collision and wall walking/climbing detection
-	for platform, idx in level.platforms {
-		//check if player is colliding with the corner of a platform
-		for c, c_idx in platform.corners {
-			if rl.CheckCollisionRecs(c, p.corner_collider) && p.movement != .jumping {
-				fmt.printf("Player collided with corner: %i,%i\n", idx, c_idx)
-				// Switch based on player orientation is easiest way to seperate logic
-				switch (p.orientation) {
-				//Player is oriented normally
-				case .norm:
-					//Player has leftshift down to enable wall climbing
-					if p.can_wall_climb {
-						//if player is facing left and collides with left corner of a platform
-						if c_idx == 0 && p.dir == .left {
-							p.last_orientation = .norm
-							p.last_orientation = .norm
-							p.orientation = .rot_left
+	for platform in level.platforms {
+		if platform.exists {
+			//check if player is colliding with the corner of a platform
+			for c, c_idx in platform.corners {
+				if rl.CheckCollisionRecs(c, p.corner_collider) && p.movement != .jumping {
+					//fmt.printf("Player collided with corner: %i,%i\n", idx, c_idx)
+					// Switch based on player orientation is easiest way to seperate logic
+					switch (p.orientation) {
+					//Player is oriented normally
+					case .norm:
+						//Player has leftshift down to enable wall climbing
+						if p.can_wall_climb {
+							//if player is facing left and collides with left corner of a platform
+							if c_idx == 0 && p.dir == .left {
+								p.last_orientation = .norm
+								p.last_orientation = .norm
+								p.orientation = .rot_left
+								p.wall_climbing = true
+								p.pos.x = c.x
+								p.pos.y = c.y + c.height + 2
+								//if player is facing right and collides with right corner of a platform
+							} else if c_idx == 1 && p.dir == .right {
+								p.last_orientation = .norm
+								p.orientation = .rot_right
+								p.wall_climbing = true
+								p.pos.x = c.x + c.width / 2
+								p.pos.y = c.y + c.height + 2
+							}
+						}
+					case .rot_left:
+						if c_idx == 0 && p.dir == .right {
+							p.last_orientation = .rot_left
+							p.orientation = .norm
+							p.wall_climbing = false
+							p.pos.x = c.x + c.width
+							p.pos.y = c.y
+						} else if c_idx == 2 && p.dir == .left {
+							p.last_orientation = .rot_left
+							p.orientation = .upside_down
+							p.wall_climbing = true
+							p.pos.x = c.x + 2
+							p.pos.y = platform.pos.y + platform.pos_rect.height
+						}
+					case .rot_right:
+						if c_idx == 1 && p.dir == .left {
+							p.last_orientation = .rot_right
+							p.orientation = .norm
+							p.wall_climbing = false
+							p.pos.x = c.x
+							p.pos.y = c.y
+						} else if c_idx == 3 && p.dir == .right {
+							p.last_orientation = .rot_right
+							p.orientation = .upside_down
 							p.wall_climbing = true
 							p.pos.x = c.x
-							p.pos.y = c.y + c.height + 2
-							//if player is facing right and collides with right corner of a platform
-						} else if c_idx == 1 && p.dir == .right {
-							p.last_orientation = .norm
-							p.orientation = .rot_right
-							p.wall_climbing = true
-							p.pos.x = c.x + c.width / 2
-							p.pos.y = c.y + c.height + 2
+							p.pos.y = platform.pos.y + platform.pos_rect.height
 						}
-					}
-				case .rot_left:
-					if c_idx == 0 && p.dir == .right {
-						p.last_orientation = .rot_left
-						p.orientation = .norm
-						p.wall_climbing = false
-						p.pos.x = c.x + c.width
-						p.pos.y = c.y
-					} else if c_idx == 2 && p.dir == .left {
-						p.last_orientation = .rot_left
-						p.orientation = .upside_down
-						p.wall_climbing = true
-						p.pos.x = c.x + 2
-						p.pos.y = platform.pos.y + platform.pos_rect.height
-					}
-				case .rot_right:
-					if c_idx == 1 && p.dir == .left {
-						p.last_orientation = .rot_right
-						p.orientation = .norm
-						p.wall_climbing = false
-						p.pos.x = c.x
-						p.pos.y = c.y
-					} else if c_idx == 3 && p.dir == .right {
-						p.last_orientation = .rot_right
-						p.orientation = .upside_down
-						p.wall_climbing = true
-						p.pos.x = c.x
-						p.pos.y = platform.pos.y + platform.pos_rect.height
-					}
-				//dir is reversed!
-				case .upside_down:
-					if c_idx == 2 && p.dir == .right {
-						p.last_orientation = .upside_down
-						p.orientation = .rot_left
-						p.pos.x = c.x
-						p.pos.y = c.y
-					} else if c_idx == 3 && p.dir == .left {
-						p.last_orientation = .upside_down
-						p.orientation = .rot_right
-						p.pos.x = platform.pos.x + platform.pos_rect.width
-						p.pos.y = c.y
+					//dir is reversed!
+					case .upside_down:
+						if c_idx == 2 && p.dir == .right {
+							p.last_orientation = .upside_down
+							p.orientation = .rot_left
+							p.pos.x = c.x
+							p.pos.y = c.y
+						} else if c_idx == 3 && p.dir == .left {
+							p.last_orientation = .upside_down
+							p.orientation = .rot_right
+							p.pos.x = platform.pos.x + platform.pos_rect.width
+							p.pos.y = c.y
+						}
 					}
 				}
 			}
@@ -543,7 +587,11 @@ update_player_colliders :: proc() {
 	case .norm:
 		p_width = r.width
 		p_height = r.height
-		p.rect = {p.pos.x - p_width / 2, p.pos.y - p_height + 1, p_width, p_height}
+		if p.movement == .falling {
+			p.rect = {p.pos.x - p_width / 2, p.pos.y - p_height + 1.5, p_width, p_height}
+		} else {
+			p.rect = {p.pos.x - p_width / 2, p.pos.y - p_height + 1, p_width, p_height}
+		}
 	case .rot_left:
 		p_width = r.height
 		p_height = r.width
@@ -667,6 +715,13 @@ draw_player :: proc(fade: f32) {
 	switch (p.orientation) 
 	{
 	case .norm:
+		if p.movement == .falling {
+			if p.dir == .right {
+				dest.x -= 1
+			} else {
+				dest.x += 2
+			}
+		}
 	case .rot_left:
 		rotation = 270
 		dest.x += (anim_texture.rect.width * .5) + 2
@@ -704,7 +759,14 @@ draw_player :: proc(fade: f32) {
 
 draw_player_debug :: proc() {
 	p := get_player()
-	font_size := f32(7)
+	font_size := f32(10)
+	rl.DrawRectangleLines(
+		i32(p.rect.x),
+		i32(p.rect.y),
+		i32(p.rect.width),
+		i32(p.rect.height),
+		rl.BLUE,
+	)
 	rl.DrawTextEx(
 		rl.GetFontDefault(),
 		rl.TextFormat("%.2f, %.2f", p.pos.x, p.pos.y),
@@ -809,6 +871,14 @@ draw_player_debug :: proc() {
 		.5,
 		rl.RED,
 	)
+	rl.DrawTextEx(
+		rl.GetFontDefault(),
+		rl.TextFormat("Fullscreen?: %v", rl.GetWindowHandle()),
+		{text_pos.x + 2 + f32(col_2), text_pos.y + f32(pad) + f32(font_size)},
+		font_size,
+		.5,
+		rl.RED,
+	)
 	pad += 6
 	rl.DrawTextEx(
 		rl.GetFontDefault(),
@@ -818,6 +888,8 @@ draw_player_debug :: proc() {
 		.5,
 		rl.RED,
 	)
+
+
 }
 
 draw_player_colliders :: proc() {
@@ -831,8 +903,8 @@ draw_player_colliders :: proc() {
 		rl.BLUE,
 	)
 	rl.DrawRectangleRec(p.feet_collider, rl.YELLOW)
-	rl.DrawRectangleRec(p.face_collider, rl.YELLOW)
-	//rl.DrawRectangleRec(g.player.head_collider, rl.BLACK)
+	rl.DrawRectangleRec(p.face_collider, rl.ORANGE)
+	rl.DrawRectangleRec(p.head_collider, rl.RED)
 	rl.DrawRectangleLinesEx(p.corner_collider, .25, rl.PINK)
 	rl.DrawPixelV(p.pos, rl.PURPLE)
 }

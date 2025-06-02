@@ -1,6 +1,7 @@
 package game
 import "core:math/linalg"
 
+
 // Resolves a pos and size to a Rect 
 pos_to_rect :: proc(pos, size: Vec2) -> Rect {
 	return {pos.x, pos.y, size.x, size.y}
@@ -22,6 +23,20 @@ get_rect_corners :: proc(rect: Rect) -> [4]Rect {
 	return c
 }
 
+get_rect_faces :: proc(rect: Rect) -> [4]Rect {
+	f: [4]Rect
+	size: f32
+	size = 1
+	//top left, top right, bottom right, bottom left
+	//y value is offeset by 1 to ensure player colliders can collide with 
+	// the corners
+	f[0] = {rect.x, rect.y, rect.width, size}
+	f[1] = {rect.x + rect.width, rect.y, size, rect.height}
+	f[2] = {rect.x, rect.y + rect.height, rect.width, size}
+	f[3] = {rect.x, rect.y, size, rect.height}
+
+	return f
+}
 // This returns a position offset by the width of the object to center the drawing
 // of the object relative to the position given.
 centered_pos_from_offset :: proc(pos: Vec2, size: Vec2) -> Vec2 {

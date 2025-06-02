@@ -5,11 +5,19 @@ import rl "vendor:raylib"
 TITLE_FONT_SIZE: i32 = 50
 MENU_FONT_SIZE: i32 = 25
 
+
 Menu :: struct {
 	title:             cstring,
 	options:           [5]cstring,
+	values:            [5]cstring,
 	selected, hovered: i32,
 	num_options:       i32,
+	type:              Menu_Type,
+}
+
+Menu_Type :: enum {
+	none,
+	settings,
 }
 
 init_menu :: proc() {
@@ -19,6 +27,7 @@ init_menu :: proc() {
 		selected    = 0,
 		hovered     = -1,
 		num_options = 3,
+		type        = .none,
 	}
 
 	g.options_menu = Menu {
@@ -27,25 +36,85 @@ init_menu :: proc() {
 		selected    = 0,
 		hovered     = -1,
 		num_options = 4,
+		type        = .none,
 	}
 
 	g.pause_menu = Menu {
 		title       = "Paused",
-		options     = {"Resume", "Options", "Exit", "", ""},
+		options     = {"Resume", "Options", "Exit to Menu", "", ""},
 		selected    = 0,
 		hovered     = -1,
 		num_options = 3,
+		type        = .none,
+	}
+
+	g.audio_menu = Menu {
+		title       = "Audio Settings",
+		options     = {"SFX", "Music", "Channels", "Type", ""},
+		selected    = 0,
+		hovered     = -1,
+		num_options = 4,
+		type        = .settings,
+	}
+
+	g.graphics_menu = Menu {
+		title       = "Graphics Settings",
+		options     = {"Fullscreen", "Resolution", "Zoom", "", ""},
+		selected    = 0,
+		hovered     = -1,
+		num_options = 4,
+		type        = .settings,
+	}
+	g.control_menu = Menu {
+		title       = "Control Settings",
+		options     = {"Left", "Right", "Jump", "", ""},
+		selected    = 0,
+		hovered     = -1,
+		num_options = 4,
+		type        = .settings,
 	}
 }
 
-draw_menu :: proc(menu: Menu, x, y: i32) {
+draw_menu :: proc(menu: ^Menu, x, y: i32, spacing: f32) {
 	//Draw menu heading
-	draw_text_centered(menu.title, x, y, TITLE_FONT_SIZE, rl.RAYWHITE)
-	ypos := y + 20
+
 	colour := rl.RAYWHITE
-	//rl.DrawText(menu.title, x, y, 20, rl.RAYWHITE)
+	ypos := y + 20
+
+	//rl.DrawCircle(x, y,2, rl.RED)
+	//drawing a rectangle around menu
+	pad := f32(50)
+	text_size_vec := rl.MeasureTextEx(
+		rl.GetFontDefault(),
+		menu.title,
+		f32(TITLE_FONT_SIZE),
+		spacing,
+	)
+	rect_x := f32(x) - text_size_vec.x / 2 - (pad / 2)
+	rect_y := f32(y) - text_size_vec.y / 3 - (f32(pad) / 2)
+	rect_width := get_width_of_longest_string_in_menu(menu, spacing)
+	rect_width += pad
+	rect_height := f32(0)
+	rect_height = (f32(ypos) + 25 + (f32(menu.num_options)) * 25)
+	rect_height = rect_height - rect_y
+
+	rl.DrawRectangle(
+		i32(rect_x),
+		i32(rect_y),
+		i32(rect_width),
+		i32(rect_height),
+		rl.Fade(rl.GRAY, 0.6),
+	)
+
+	draw_text_centered_spacing(menu.title, x, y, TITLE_FONT_SIZE, rl.RAYWHITE, spacing)
 	for option, idx in menu.options {
 		if option != "" {
+			text_size_vec = rl.MeasureTextEx(
+				rl.GetFontDefault(),
+				menu.options[idx],
+				f32(MENU_FONT_SIZE),
+				spacing,
+			)
 			if idx == int(menu.selected) {
 				colour = rl.YELLOW
 			} else if idx == int(menu.hovered) {
@@ -53,20 +122,91 @@ draw_menu :: proc(menu: Menu, x, y: i32) {
 			} else {
 				colour = rl.RAYWHITE
 			}
-			draw_text_centered(
+			draw_text_centered_spacing(
 				menu.options[idx],
 				x,
 				ypos + 25 + i32(idx) * 25,
 				MENU_FONT_SIZE,
 				colour,
+				spacing,
 			)
 		}
 	}
+	//rect_height = rect_height - rect_y
+	rl.DrawRectangleLines(i32(rect_x), i32(rect_y), i32(rect_width), i32(rect_height), rl.BLACK)
 }
 
-// Handle menu input and update the menu state  
-update_menu :: proc(menu: ^Menu) {
-	fmt.printf("update menu\n")
+//used for the different options settings
+draw_menu_settings :: proc(menu: ^Menu, x, y: i32, spacing: f32) {
+	colour := rl.RAYWHITE
+	ypos := y + 20
+	pad := f32(50)
+	text_size_vec := rl.MeasureTextEx(
+		rl.GetFontDefault(),
+		menu.title,
+		f32(TITLE_FONT_SIZE),
+		spacing,
+	)
+	rect_x := f32(x) - text_size_vec.x / 2 - (pad / 2)
+	rect_y := f32(y) - text_size_vec.y / 3 - (f32(pad) / 2)
+	rect_width := get_width_of_longest_string_in_menu(menu, spacing)
+	rect_width += pad
+	rect_height := f32(0)
+	rect_height = (f32(ypos) + 25 + (f32(menu.num_options)) * 25) + pad / 2
+	rect_height = rect_height - rect_y
+
+	rl.DrawRectangle(
+		i32(rect_x),
+		i32(rect_y),
+		i32(rect_width),
+		i32(rect_height),
+		rl.Fade(rl.GRAY, 0.6),
+	)
+	settings := get_settings(menu)
+	draw_text_centered_spacing(menu.title, x, y, TITLE_FONT_SIZE, rl.RAYWHITE, spacing)
+	for option, idx in menu.options {
+		if option != "" {
+			colour = rl.RAYWHITE
+			text_size_vec = rl.MeasureTextEx(
+				rl.GetFontDefault(),
+				menu.options[idx],
+				f32(MENU_FONT_SIZE),
+				1,
+			)
+			draw_text_left_aligned_spacing(
+				menu.options[idx],
+				i32(rect_x + (pad / 2)),
+				ypos + 25 + i32(idx) * 25,
+				MENU_FONT_SIZE,
+				colour,
+				spacing,
+			)
+
+			if idx == int(menu.selected) {
+				colour = rl.YELLOW
+			} else if idx == int(menu.hovered) {
+				colour = rl.LIGHTGRAY
+			} else {
+				colour = rl.RAYWHITE
+			}
+			draw_text_right_aligned_spacing(
+				settings[idx],
+				i32(rect_x + rect_width - pad),
+				ypos + 25 + i32(idx) * 25,
+				MENU_FONT_SIZE,
+				colour,
+				spacing,
+			)
+
+		}
+	}
+	rl.DrawRectangleLines(i32(rect_x), i32(rect_y), i32(rect_width), i32(rect_height), rl.BLACK)
+}
+
+//generic menu update function
+update_menu_generic :: proc(menu: ^Menu) {
+
+	//handle input first
 	if rl.IsKeyPressed(.UP) || rl.IsKeyPressed(.W) {
 		menu.selected -= 1
 		if menu.selected < 0 {
@@ -79,465 +219,170 @@ update_menu :: proc(menu: ^Menu) {
 		}
 	}
 
-	if rl.IsKeyPressed(.ENTER) {
-		if menu.selected == 0 {
-			// Start Game
-			g.state = .play
-			//init_level(g.level)
-			//init_quadtree(&quadtree, 25, 15)
-			fmt.printf("Starting game...\n")
-		} else if menu.selected == 1 {
-			// Options                
-			//g.state = .options
-			fmt.printf("Opening options...\n")
-		} else if menu.selected == 2 {
-			// Exit 
-			fmt.printf("Shutting down...\n")
+	if rl.IsKeyPressed(.C) {
+		DEBUG_DRAW_COLLIDERS = !DEBUG_DRAW_COLLIDERS
+	}
+
+	settings := 0
+	//store left and right for toggling/changing settings
+	if rl.IsKeyPressed(.A) || rl.IsKeyPressed(.LEFT) {
+		settings = -1
+	}
+	if rl.IsKeyPressed(.D) || rl.IsKeyPressed(.RIGHT) {
+		settings = 1
+	}
+
+	switch (menu.title) 
+	{
+	case "Main Menu":
+		if rl.IsKeyPressed(.ENTER) && !MODIFIER_KEY_DOWN {
+			if menu.selected == 0 {
+				// Start Game
+				g.state = .play
+				fmt.printf("Starting game...\n")
+			} else if menu.selected == 1 {
+				// Options        
+				g.prev_state = .mainMenu
+				g.state = .options
+				fmt.printf("Opening options...\n")
+			} else if menu.selected == 2 {
+				// Exit 
+				fmt.printf("Shutting down...\n")
+				g.run = !g.run
+			}
+		}
+		//close game
+		if rl.IsKeyPressed(.ESCAPE) {
 			g.run = false
+		}
+	case "Options":
+		if rl.IsKeyPressed(.ENTER) && !MODIFIER_KEY_DOWN {
+			if menu.selected == 0 {
+				g.state = .audio_options
+				fmt.printf("Opening audio settings...\n")
+			} else if menu.selected == 1 {
+				// Options                
+				g.state = .graphics_options
+				fmt.printf("Opening graphics settings...\n")
+			} else if menu.selected == 2 {
+				g.state = .control_options
+				fmt.printf("Opening Control settings...\n")
+			} else if menu.selected == 3 {
+				g.state = g.prev_state
+				g.prev_state = .options
+				fmt.printf("Exiting options!\n")
+			}
+		}
+		//revert to prior state
+		if rl.IsKeyPressed(.ESCAPE) {
+			g.state = g.prev_state
+		}
+	case "Paused":
+		if rl.IsKeyPressed(.ENTER) && !MODIFIER_KEY_DOWN {
+			if menu.selected == 0 {
+				fmt.printf("Resuming game...\n")
+				g.state = .play
+			} else if menu.selected == 1 {
+				fmt.printf("Opening Options...\n")
+				g.state = .options
+				g.prev_state = .pause
+			} else if menu.selected == 2 {
+				fmt.printf("Returning to main menu...\n")
+				g.state = .mainMenu
+			}
+		}
+		if rl.IsKeyPressed(.ESCAPE) {
+			g.state = .play
+		}
+	case "Audio Settings":
+		switch (menu.options) 
+		{
+		case "SFX":
+		case "Music":
+		case "Channels":
+		case "Type":
+		}
+
+
+		if rl.IsKeyPressed(.ESCAPE) {
+			g.state = .options
+		}
+	case "Graphics Settings":
+		if rl.IsKeyPressed(.ESCAPE) {
+			g.state = .options
+		}
+
+		if rl.IsKeyPressed(.ENTER) && !MODIFIER_KEY_DOWN {
+			if menu.selected == 0 {
+				rl.ToggleBorderlessWindowed()
+				g.graphics_settings.windowed = !g.graphics_settings.windowed
+				g.graphics_settings.borderless = !g.graphics_settings.borderless
+				g.graphics_settings.fullscreen = !g.graphics_settings.fullscreen
+			} else if menu.selected == 1 {
+
+			} else if menu.selected == 2 {
+				//change zoom
+				CAMERA_ZOOM_MULT += f32(.05)
+			}
+		}
+
+
+	case "Control Settings":
+		if rl.IsKeyPressed(.ESCAPE) {
+			g.state = .options
 		}
 	}
 }
 
-draw_main_menu :: proc() {
-	fade := f32(0.5)
+//generic draw menu
+draw_menu_generic :: proc(menu: ^Menu, fade: f32) {
+	rl.BeginDrawing()
 	rl.BeginDrawing()
 	rl.ClearBackground(rl.SKYBLUE)
 	rl.BeginMode2D(game_camera())
 	{
-		draw_level(fade)
-		draw_player(fade)
+		draw_level(0.5)
+		draw_player(0.5)
 		//draw_menu
-
-	}
-	rl.EndMode2D()
-
-	//UI DRAW
-	rl.BeginMode2D(ui_camera())
-	{
-
-
 	}
 	rl.EndMode2D()
 
 	//Menu text
-	rl.DrawRectangle(0, 0, rl.GetScreenWidth(), rl.GetScreenHeight(), rl.Fade(rl.BLACK, fade))
+	rl.DrawRectangle(0, 0, rl.GetScreenWidth(), rl.GetScreenHeight(), rl.Fade(rl.BLACK, .3))
 	w := rl.GetScreenWidth()
 	h := rl.GetScreenHeight()
-	draw_menu(g.main_menu, w / 2, h / 3)
 
-	if DEBUG_DRAW {
-		// Draw debug info
-		draw_text_centered(rl.TextFormat("FPS: %i", rl.GetFPS()), w / 2, h - 50, 20, rl.RAYWHITE)
-		draw_text_centered(
-			rl.TextFormat("Entities: %i", len(g.entities.items)),
-			w / 2,
-			h - 75,
-			20,
-			rl.RAYWHITE,
-		)
-		draw_text_centered(
-			rl.TextFormat("Quadtree Nodes: %i", quadtree.node_count),
-			w / 2,
-			h - 100,
-			20,
-			rl.RAYWHITE,
-		)
 
-		/*font_size := f32(7)
-		text_pos := rl.GetScreenToWorld2D({0, 0}, game_camera())
-		col_2 :=
-			rl.MeasureText(rl.TextFormat("Player Grounded?: %v", p.is_on_ground), i32(font_size)) +
-			10
-		rl.DrawTextEx(
-			rl.GetFontDefault(),
-			rl.TextFormat("Player Grounded: %v", p.is_on_ground),
-			{text_pos.x + 2, text_pos.y + 2},
-			font_size,
-			.5,
-			rl.RED,
-		)
-		rl.DrawTextEx(
-			rl.GetFontDefault(),
-			rl.TextFormat("Player Pos: %.2f,%.2f", p.pos.x, p.pos.y),
-			{text_pos.x + 2 + f32(col_2), text_pos.y + 2},
-			font_size,
-			.5,
-			rl.RED,
-		)
-		pad := 1
-		rl.DrawTextEx(
-			rl.GetFontDefault(),
-			rl.TextFormat("Player Movement: %s", p.movement),
-			{text_pos.x + 2, text_pos.y + f32(pad) + f32(font_size)},
-			font_size,
-			.5,
-			rl.RED,
-		)
-		rl.DrawTextEx(
-			rl.GetFontDefault(),
-			rl.TextFormat("Player Input: %v", p.input),
-			{text_pos.x + 2 + f32(col_2), text_pos.y + f32(pad) + f32(font_size)},
-			font_size,
-			.5,
-			rl.RED,
-		)
-		pad += 6
-		rl.DrawTextEx(
-			rl.GetFontDefault(),
-			rl.TextFormat("Player Direction: %s", p.dir),
-			{text_pos.x + 2, text_pos.y + f32(pad) + f32(font_size)},
-			font_size,
-			.5,
-			rl.RED,
-		)
-		rl.DrawTextEx(
-			rl.GetFontDefault(),
-			rl.TextFormat("Player Flip_x: %v", p.flip_x),
-			{text_pos.x + 2 + f32(col_2), text_pos.y + f32(pad) + f32(font_size)},
-			font_size,
-			.5,
-			rl.RED,
-		)
-		pad += 6
-		rl.DrawTextEx(
-			rl.GetFontDefault(),
-			rl.TextFormat("Player Orientation: %s", p.orientation),
-			{text_pos.x + 2, text_pos.y + f32(pad) + f32(font_size)},
-			font_size,
-			.5,
-			rl.RED,
-		)
-		rl.DrawTextEx(
-			rl.GetFontDefault(),
-			rl.TextFormat("Player Climbing: %v", p.wall_climbing),
-			{text_pos.x + 2 + f32(col_2), text_pos.y + f32(pad) + f32(font_size)},
-			font_size,
-			.5,
-			rl.RED,
-		)
-		pad += 6
-		rl.DrawTextEx(
-			rl.GetFontDefault(),
-			rl.TextFormat("Player Animation: %v", p.anim.atlas_anim),
-			{text_pos.x + 2, text_pos.y + f32(pad) + f32(font_size)},
-			font_size,
-			.5,
-			rl.RED,
-		)
-		pad += 6
-		rl.DrawTextEx(
-			rl.GetFontDefault(),
-			rl.TextFormat("Player Animation Frame?: %v", p.anim.current_frame),
-			{text_pos.x + 2, text_pos.y + f32(pad) + f32(font_size)},
-			font_size,
-			.5,
-			rl.RED,
-		)
-		pad += 6
-		rl.DrawTextEx(
-			rl.GetFontDefault(),
-			rl.TextFormat("Side Jump: %v", p.side_jump),
-			{text_pos.x + 2, text_pos.y + f32(pad) + f32(font_size)},
-			font_size,
-			.5,
-			rl.RED,
-		)*/
+	if menu.type == .settings {
+		draw_menu_settings(menu, w / 2, h / 3, MENU_SPACING)
+	} else {
+		draw_menu(menu, w / 2, h / 3, MENU_SPACING)
 	}
+
 	rl.EndDrawing()
 }
 
-draw_pause_menu :: proc() {
-	fade := f32(0.5)
-	rl.BeginDrawing()
-	rl.ClearBackground(rl.SKYBLUE)
-	rl.BeginMode2D(game_camera())
+
+//returns an array of menu settings as a string 
+get_settings :: proc(menu: ^Menu) -> [5]cstring {
+	return_arr: [5]cstring
+
+	switch (menu.title) 
 	{
-		draw_level(fade)
-		draw_player(fade)
-		//draw_menu
+	case "Audio Settings":
+
+	case "Graphics Settings":
+		if g.graphics_settings.fullscreen {
+			return_arr[0] = rl.TextFormat("True")
+		} else {
+			return_arr[0] = rl.TextFormat("False")
+		}
+		return_arr[1] = rl.TextFormat("%ix%i", rl.GetScreenWidth(), rl.GetScreenHeight())
+		return_arr[2] = rl.TextFormat("%i", int(CAMERA_ZOOM * CAMERA_ZOOM_MULT))
+	//return_arr[1] =
+	case "Control Settings":
 
 	}
-	rl.EndMode2D()
 
-	//UI DRAW
-	rl.BeginMode2D(ui_camera())
-	{
-
-
-	}
-	rl.EndMode2D()
-
-	//Menu text
-	rl.DrawRectangle(0, 0, rl.GetScreenWidth(), rl.GetScreenHeight(), rl.Fade(rl.BLACK, fade))
-	w := rl.GetScreenWidth()
-	h := rl.GetScreenHeight()
-	draw_menu(g.pause_menu, w / 2, h / 3)
-
-	if DEBUG_DRAW {
-		// Draw debug info
-		draw_text_centered(rl.TextFormat("FPS: %i", rl.GetFPS()), w / 2, h - 50, 20, rl.RAYWHITE)
-		draw_text_centered(
-			rl.TextFormat("Entities: %i", len(g.entities.items)),
-			w / 2,
-			h - 75,
-			20,
-			rl.RAYWHITE,
-		)
-		draw_text_centered(
-			rl.TextFormat("Quadtree Nodes: %i", quadtree.node_count),
-			w / 2,
-			h - 100,
-			20,
-			rl.RAYWHITE,
-		)
-
-		/*font_size := f32(7)
-		text_pos := rl.GetScreenToWorld2D({0, 0}, game_camera())
-		col_2 :=
-			rl.MeasureText(rl.TextFormat("Player Grounded?: %v", p.is_on_ground), i32(font_size)) +
-			10
-		rl.DrawTextEx(
-			rl.GetFontDefault(),
-			rl.TextFormat("Player Grounded: %v", p.is_on_ground),
-			{text_pos.x + 2, text_pos.y + 2},
-			font_size,
-			.5,
-			rl.RED,
-		)
-		rl.DrawTextEx(
-			rl.GetFontDefault(),
-			rl.TextFormat("Player Pos: %.2f,%.2f", p.pos.x, p.pos.y),
-			{text_pos.x + 2 + f32(col_2), text_pos.y + 2},
-			font_size,
-			.5,
-			rl.RED,
-		)
-		pad := 1
-		rl.DrawTextEx(
-			rl.GetFontDefault(),
-			rl.TextFormat("Player Movement: %s", p.movement),
-			{text_pos.x + 2, text_pos.y + f32(pad) + f32(font_size)},
-			font_size,
-			.5,
-			rl.RED,
-		)
-		rl.DrawTextEx(
-			rl.GetFontDefault(),
-			rl.TextFormat("Player Input: %v", p.input),
-			{text_pos.x + 2 + f32(col_2), text_pos.y + f32(pad) + f32(font_size)},
-			font_size,
-			.5,
-			rl.RED,
-		)
-		pad += 6
-		rl.DrawTextEx(
-			rl.GetFontDefault(),
-			rl.TextFormat("Player Direction: %s", p.dir),
-			{text_pos.x + 2, text_pos.y + f32(pad) + f32(font_size)},
-			font_size,
-			.5,
-			rl.RED,
-		)
-		rl.DrawTextEx(
-			rl.GetFontDefault(),
-			rl.TextFormat("Player Flip_x: %v", p.flip_x),
-			{text_pos.x + 2 + f32(col_2), text_pos.y + f32(pad) + f32(font_size)},
-			font_size,
-			.5,
-			rl.RED,
-		)
-		pad += 6
-		rl.DrawTextEx(
-			rl.GetFontDefault(),
-			rl.TextFormat("Player Orientation: %s", p.orientation),
-			{text_pos.x + 2, text_pos.y + f32(pad) + f32(font_size)},
-			font_size,
-			.5,
-			rl.RED,
-		)
-		rl.DrawTextEx(
-			rl.GetFontDefault(),
-			rl.TextFormat("Player Climbing: %v", p.wall_climbing),
-			{text_pos.x + 2 + f32(col_2), text_pos.y + f32(pad) + f32(font_size)},
-			font_size,
-			.5,
-			rl.RED,
-		)
-		pad += 6
-		rl.DrawTextEx(
-			rl.GetFontDefault(),
-			rl.TextFormat("Player Animation: %v", p.anim.atlas_anim),
-			{text_pos.x + 2, text_pos.y + f32(pad) + f32(font_size)},
-			font_size,
-			.5,
-			rl.RED,
-		)
-		pad += 6
-		rl.DrawTextEx(
-			rl.GetFontDefault(),
-			rl.TextFormat("Player Animation Frame?: %v", p.anim.current_frame),
-			{text_pos.x + 2, text_pos.y + f32(pad) + f32(font_size)},
-			font_size,
-			.5,
-			rl.RED,
-		)
-		pad += 6
-		rl.DrawTextEx(
-			rl.GetFontDefault(),
-			rl.TextFormat("Side Jump: %v", p.side_jump),
-			{text_pos.x + 2, text_pos.y + f32(pad) + f32(font_size)},
-			font_size,
-			.5,
-			rl.RED,
-		)*/
-	}
-	rl.EndDrawing()
-}
-
-draw_options_menu :: proc() {
-	fade := f32(0.5)
-	rl.BeginDrawing()
-	rl.ClearBackground(rl.SKYBLUE)
-	rl.BeginMode2D(game_camera())
-	{
-		draw_level(fade)
-		draw_player(fade)
-		//draw_menu
-
-	}
-	rl.EndMode2D()
-
-	//UI DRAW
-	rl.BeginMode2D(ui_camera())
-	{
-
-
-	}
-	rl.EndMode2D()
-
-	//Menu text
-	rl.DrawRectangle(0, 0, rl.GetScreenWidth(), rl.GetScreenHeight(), rl.Fade(rl.BLACK, fade))
-	w := rl.GetScreenWidth()
-	h := rl.GetScreenHeight()
-	draw_menu(g.pause_menu, w / 2, h / 3)
-
-	if DEBUG_DRAW {
-		// Draw debug info
-		draw_text_centered(rl.TextFormat("FPS: %i", rl.GetFPS()), w / 2, h - 50, 20, rl.RAYWHITE)
-		draw_text_centered(
-			rl.TextFormat("Entities: %i", len(g.entities.items)),
-			w / 2,
-			h - 75,
-			20,
-			rl.RAYWHITE,
-		)
-		draw_text_centered(
-			rl.TextFormat("Quadtree Nodes: %i", quadtree.node_count),
-			w / 2,
-			h - 100,
-			20,
-			rl.RAYWHITE,
-		)
-
-		/*font_size := f32(7)
-		text_pos := rl.GetScreenToWorld2D({0, 0}, game_camera())
-		col_2 :=
-			rl.MeasureText(rl.TextFormat("Player Grounded?: %v", p.is_on_ground), i32(font_size)) +
-			10
-		rl.DrawTextEx(
-			rl.GetFontDefault(),
-			rl.TextFormat("Player Grounded: %v", p.is_on_ground),
-			{text_pos.x + 2, text_pos.y + 2},
-			font_size,
-			.5,
-			rl.RED,
-		)
-		rl.DrawTextEx(
-			rl.GetFontDefault(),
-			rl.TextFormat("Player Pos: %.2f,%.2f", p.pos.x, p.pos.y),
-			{text_pos.x + 2 + f32(col_2), text_pos.y + 2},
-			font_size,
-			.5,
-			rl.RED,
-		)
-		pad := 1
-		rl.DrawTextEx(
-			rl.GetFontDefault(),
-			rl.TextFormat("Player Movement: %s", p.movement),
-			{text_pos.x + 2, text_pos.y + f32(pad) + f32(font_size)},
-			font_size,
-			.5,
-			rl.RED,
-		)
-		rl.DrawTextEx(
-			rl.GetFontDefault(),
-			rl.TextFormat("Player Input: %v", p.input),
-			{text_pos.x + 2 + f32(col_2), text_pos.y + f32(pad) + f32(font_size)},
-			font_size,
-			.5,
-			rl.RED,
-		)
-		pad += 6
-		rl.DrawTextEx(
-			rl.GetFontDefault(),
-			rl.TextFormat("Player Direction: %s", p.dir),
-			{text_pos.x + 2, text_pos.y + f32(pad) + f32(font_size)},
-			font_size,
-			.5,
-			rl.RED,
-		)
-		rl.DrawTextEx(
-			rl.GetFontDefault(),
-			rl.TextFormat("Player Flip_x: %v", p.flip_x),
-			{text_pos.x + 2 + f32(col_2), text_pos.y + f32(pad) + f32(font_size)},
-			font_size,
-			.5,
-			rl.RED,
-		)
-		pad += 6
-		rl.DrawTextEx(
-			rl.GetFontDefault(),
-			rl.TextFormat("Player Orientation: %s", p.orientation),
-			{text_pos.x + 2, text_pos.y + f32(pad) + f32(font_size)},
-			font_size,
-			.5,
-			rl.RED,
-		)
-		rl.DrawTextEx(
-			rl.GetFontDefault(),
-			rl.TextFormat("Player Climbing: %v", p.wall_climbing),
-			{text_pos.x + 2 + f32(col_2), text_pos.y + f32(pad) + f32(font_size)},
-			font_size,
-			.5,
-			rl.RED,
-		)
-		pad += 6
-		rl.DrawTextEx(
-			rl.GetFontDefault(),
-			rl.TextFormat("Player Animation: %v", p.anim.atlas_anim),
-			{text_pos.x + 2, text_pos.y + f32(pad) + f32(font_size)},
-			font_size,
-			.5,
-			rl.RED,
-		)
-		pad += 6
-		rl.DrawTextEx(
-			rl.GetFontDefault(),
-			rl.TextFormat("Player Animation Frame?: %v", p.anim.current_frame),
-			{text_pos.x + 2, text_pos.y + f32(pad) + f32(font_size)},
-			font_size,
-			.5,
-			rl.RED,
-		)
-		pad += 6
-		rl.DrawTextEx(
-			rl.GetFontDefault(),
-			rl.TextFormat("Side Jump: %v", p.side_jump),
-			{text_pos.x + 2, text_pos.y + f32(pad) + f32(font_size)},
-			font_size,
-			.5,
-			rl.RED,
-		)*/
-	}
-	rl.EndDrawing()
+	return return_arr
 }

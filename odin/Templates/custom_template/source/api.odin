@@ -20,7 +20,7 @@ game_update :: proc() {
 
 @(export)
 game_should_close :: proc() -> bool {
-	return rl.WindowShouldClose()
+	return game_should_run()
 }
 
 @(export)

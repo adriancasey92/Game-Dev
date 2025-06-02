@@ -32,16 +32,28 @@ import "core:fmt"
 import "core:mem"
 import rl "vendor:raylib"
 
-
 //Constants
-CAMERA_ZOOM :: 200
-GRAVITY :: 500
+CAMERA_ZOOM_BASE :: f32(100)
+CAMERA_ZOOM: f32 = CAMERA_ZOOM_BASE
+CAMERA_ZOOM_MULT: f32 = 0
+CAMERA_ZOOM_MAX :: f32(250)
+CAMERA_ZOOM_MIN :: f32(50)
+GRAVITY :: f32(500)
+
+//UI SCALE
+UI_SCALE_MULT: f32 = 0
+UI_SCALE_BASE :: f32(1)
+
+
+//Menu
+MENU_SPACING :: 5
 
 DEBUG_DRAW: bool
 DEBUG_DRAW_COLLIDERS: bool
 
 //ATLAS BUILDER
 ATLAS_DATA :: #load("atlas.png")
+MENU_MOVE :: #load("../assets/sounds/menu_move.wav")
 /*HIT_SOUND :: #load("../assets/sounds/hit.wav")
 LAND_SOUND :: #load("../assets/sounds/land.wav")
 WIN_SOUND :: #load("../assets/sounds/win.wav")*/
@@ -53,6 +65,7 @@ Rect :: rl.Rectangle
 
 Platform :: struct {
 	pos:           Vec2,
+	size:          Vec2,
 	pos_rect:      Rect,
 	size_vec2:     Vec2,
 	texture_rect:  Rect,
@@ -60,6 +73,8 @@ Platform :: struct {
 	friction_face: Entity_Direction,
 	corners:       [4]Rect,
 	index:         int,
+	exists:        bool,
+	faces:         [4]Rect,
 }
 
 Game_State :: enum {
@@ -67,6 +82,9 @@ Game_State :: enum {
 	play,
 	quadtree,
 	options,
+	audio_options,
+	graphics_options,
+	control_options,
 	edit,
 	pause,
 	mainMenu,
@@ -84,40 +102,43 @@ Edit_Platforms :: struct {
 	pos:       Vec2,
 	mouseOver: bool,
 }
-
 Game_Memory :: struct {
 	//Game state
-	state:            Game_State,
-	level:            int,
-	won:              bool,
-	game_camera:      rl.Camera2D,
+	state:             Game_State,
+	prev_state:        Game_State,
+	level:             int,
+	won:               bool,
+	game_camera:       rl.Camera2D,
+	settings_sound:    Sound_Settings,
+	settings_graphics: Graphics_Settings,
 
 	//Resources
-	atlas:            rl.Texture2D,
-	font:             rl.Font,
-	hit_sound:        rl.Sound,
-	land_sound:       rl.Sound,
-	win_sound:        rl.Sound,
+	atlas:             rl.Texture2D,
+	font:              rl.Font,
+	hit_sound:         rl.Sound,
+	land_sound:        rl.Sound,
+	win_sound:         rl.Sound,
 
 	//Editor
-	in_menu:          bool,
-	editing:          bool,
-	finished:         bool,
-	time_accumulator: f32,
+	in_menu:           bool,
+	editing:           bool,
+	finished:          bool,
+	time_accumulator:  f32,
 
 	//Globals
-	run:              bool,
-	won_at:           f64,
-	initialized:      bool,
-	entities:         hm.Handle_Map(Entity, Entity_Handle, 10000),
-	//entity_id_gen:    u64,
-	//entity_top_count: u64,
-	//world_name:       string,
-	player_handle:    Entity_Handle,
-	main_menu:        Menu,
-	options_menu:     Menu,
-	pause_menu:       Menu,
-	state_changed:    bool,
+	run:               bool,
+	won_at:            f64,
+	initialized:       bool,
+	entities:          hm.Handle_Map(Entity, Entity_Handle, 10000),
+	player_handle:     Entity_Handle,
+	main_menu:         Menu,
+	options_menu:      Menu,
+	graphics_menu:     Menu,
+	audio_menu:        Menu,
+	control_menu:      Menu,
+	pause_menu:        Menu,
+	state_changed:     bool,
+	graphics_settings: Graphics_Settings,
 }
 
 quadtree: Quadtree
@@ -126,12 +147,15 @@ atlas: rl.Texture2D
 hit_sound: rl.Sound
 land_sound: rl.Sound
 win_sound: rl.Sound
+sound_settings: Sound_Settings
 level: Level
 g: ^Game_Memory
 font: rl.Font
-
 dt: f32
 real_dt: f32
+
+//Stops alt+enter from 'entering' menu selections
+MODIFIER_KEY_DOWN: bool
 
 //Init raylib window, position and audio device
 init_window :: proc() {
@@ -145,6 +169,7 @@ init_window :: proc() {
 	rl.SetTargetFPS(500)
 	rl.InitAudioDevice()
 	rl.SetExitKey(.KEY_NULL)
+
 }
 
 //Initialise everything to do with the game+systems here
@@ -152,6 +177,9 @@ init :: proc() {
 	fmt.printf("Init\n")
 	g = new(Game_Memory)
 
+	g.graphics_settings.borderless = false
+	g.graphics_settings.windowed = true
+	g.graphics_settings.fullscreen = false
 	//load the raw data into atlas_image
 	atlas_image := rl.LoadImageFromMemory(".png", raw_data(ATLAS_DATA), i32(len(ATLAS_DATA)))
 	//font = load_atlased_font()a
@@ -202,32 +230,72 @@ init :: proc() {
 // Main update loop
 // Handles input first, THEN updates entities accordingly. 
 update :: proc() {
+	if rl.IsKeyPressed(.LEFT_ALT) {
+		MODIFIER_KEY_DOWN = true
+	}
+	if rl.IsKeyReleased(.LEFT_ALT) {
+		MODIFIER_KEY_DOWN = false
+	}
+
 	//Have all features that will work regardless of state here
 	//Borderless window toggle
-	if rl.IsKeyPressed(.ENTER) && rl.IsKeyDown(.LEFT_ALT) {
+	if rl.IsKeyPressed(.ENTER) && MODIFIER_KEY_DOWN {
 		rl.ToggleBorderlessWindowed()
+		g.graphics_settings.borderless = !g.graphics_settings.borderless
+		g.graphics_settings.windowed = !g.graphics_settings.windowed
+		g.graphics_settings.fullscreen = !g.graphics_settings.fullscreen
 	}
 	if rl.IsKeyPressed(.F4) {
 		fmt.printf("DEBUG TOGGLED!\n")
 		DEBUG_DRAW = !DEBUG_DRAW
 	}
 
+	//close game
+	if (rl.WindowShouldClose()) {
+		g.run = !g.run
+	}
+
 	#partial switch (g.state) 
 	{
 	case .mainMenu:
-		update_menu(&g.main_menu)
+		update_menu_generic(&g.main_menu)
 	case .play:
 		update_play()
 	case .quadtree:
 		update_quadtree()
+	case .options:
+		update_menu_generic(&g.options_menu)
+	case .audio_options:
+		update_menu_generic(&g.audio_menu)
+	case .graphics_options:
+		update_menu_generic(&g.graphics_menu)
+	case .control_options:
+		update_menu_generic(&g.control_menu)
 	case .pause:
-		update_pause(&g.pause_menu)
+		update_menu_generic(&g.pause_menu)
 	}
 }
 
 update_play :: proc() {
 	dt = rl.GetFrameTime()
 	real_dt = dt
+
+	//camera zoom
+	mouse_scroll := rl.GetMouseWheelMove()
+	if mouse_scroll != 0 {
+		if mouse_scroll == 1 {
+			CAMERA_ZOOM_MULT -= .15
+		} else {
+			CAMERA_ZOOM_MULT += .15
+		}
+	}
+
+	if CAMERA_ZOOM_MULT > 2 {
+		CAMERA_ZOOM_MULT = 2
+	}
+	if CAMERA_ZOOM_MULT < 0.25 {
+		CAMERA_ZOOM_MULT = .25
+	}
 
 	if rl.IsKeyPressed(.C) {
 		DEBUG_DRAW_COLLIDERS = !DEBUG_DRAW_COLLIDERS
@@ -275,16 +343,6 @@ update_play :: proc() {
 		//editor_update()
 	}
 
-	//Main menu
-	if g.in_menu {
-		//fmt.printf("TODO - Menu\n")
-		if rl.IsKeyPressed(.ESCAPE) {
-			g.in_menu = false
-
-		}
-		return
-	}
-
 	//PHYSICS
 	g.time_accumulator += dt
 	PHYSICS_STEP :: 1 / 60.0
@@ -295,34 +353,8 @@ update_play :: proc() {
 		//physics_update()
 	}*/
 
-
-	//Update player+entities
-
+	//Update player
 	update_player(dt)
-
-	/*p := hm.get(g.entities, g.player_handle)
-
-
-	input: rl.Vector2
-
-	if rl.IsKeyDown(.LEFT) || rl.IsKeyDown(.A) {
-		input.x -= 1
-	}
-	if rl.IsKeyDown(.RIGHT) || rl.IsKeyDown(.D) {
-		input.x += 1
-	}
-
-	if input.x != 0 {
-		animation_update(&p.anim, rl.GetFrameTime())
-		p.flip_x = input.x < 0
-	}
-
-	input = linalg.normalize0(input)
-	p.pos += input * rl.GetFrameTime() * 100
-
-	if rl.IsKeyPressed(.ESCAPE) {
-		g.run = false
-	}*/
 }
 
 update_quadtree :: proc() {
@@ -333,60 +365,36 @@ update_quadtree :: proc() {
 	build_quadtree()
 }
 
-update_pause :: proc(menu: ^Menu) {
-
-	if rl.IsKeyPressed(.ESCAPE) {
-		g.state = .play
-	}
-
-	if rl.IsKeyPressed(.UP) || rl.IsKeyPressed(.W) {
-		menu.selected -= 1
-		if menu.selected < 0 {
-			menu.selected = menu.num_options - 1
-		}
-	} else if rl.IsKeyPressed(.DOWN) || rl.IsKeyPressed(.TAB) || rl.IsKeyPressed(.S) {
-		menu.selected += 1
-		if menu.selected >= menu.num_options {
-			menu.selected = 0
-		}
-	}
-
-	if rl.IsKeyPressed(.ENTER) {
-		if menu.selected == 0 {
-			// Start Game
-			g.state = .play
-			//init_level(g.level)
-			//init_quadtree(&quadtree, 25, 15)
-			fmt.printf("Starting game...\n")
-		} else if menu.selected == 1 {
-			// Options                
-			//g.state = .options
-			fmt.printf("Opening options...\n")
-		} else if menu.selected == 2 {
-			// Exit 
-			fmt.printf("Shutting down...\n")
-			g.run = false
-		}
-	}
-}
-
+//main draw function
 draw :: proc() {
+
+	//used when inside menu to fade background images
+	fade: f32
+	fade = 1
 	#partial switch (g.state) 
 	{
 	case .mainMenu:
-		draw_main_menu()
+		draw_menu_generic(&g.main_menu, fade)
 	case .play:
-		draw_play()
+		draw_play(fade)
 	case .quadtree:
 		draw_quadtree()
+	case .options:
+		draw_menu_generic(&g.options_menu, fade)
+	case .audio_options:
+		draw_menu_generic(&g.audio_menu, fade)
+	case .graphics_options:
+		draw_menu_generic(&g.graphics_menu, fade)
+	case .control_options:
+		draw_menu_generic(&g.control_menu, fade)
 	case .pause:
 		//we still draw the game in the background with a fade
-		draw_pause_menu()
+		draw_menu_generic(&g.pause_menu, fade)
 	}
 }
 
-draw_play :: proc() {
-	fade := f32(1)
+draw_play :: proc(fade: f32) {
+	//fade := f32(1)
 	rl.BeginDrawing()
 	rl.ClearBackground(rl.SKYBLUE)
 	//rl.ClearBackground(rl.SKYBLUE)
@@ -420,7 +428,6 @@ draw_quadtree :: proc() {
 */
 }
 
-
 game_should_run :: proc() -> bool {
 	when ODIN_OS != .JS {
 		// Never run this proc in browser. It contains a 16 ms sleep on web!
@@ -428,7 +435,7 @@ game_should_run :: proc() -> bool {
 			return false
 		}
 	}
-	return g.run
+	return !g.run
 }
 
 refresh_globals :: proc() {
@@ -446,18 +453,18 @@ refresh_globals :: proc() {
 //atlas and adding any added textures. 
 //This usually breaks things regarless. 
 /*HIT_SOUND :: #load("../assets/sounds/hit.wav")
-	LAND_SOUND :: #load("../assets/sounds/land.wav")
-	WIN_SOUND :: #load("../assets/sounds/win.wav")
-	
-	hit_sound = rl.LoadSoundFromWave(
-		rl.LoadWaveFromMemory(".wav", raw_data(HIT_SOUND), i32(len(HIT_SOUND))),
-	)
-	land_sound = rl.LoadSoundFromWave(
-		rl.LoadWaveFromMemory(".wav", raw_data(LAND_SOUND), i32(len(LAND_SOUND))),
-	)
-	win_sound = rl.LoadSoundFromWave(
-		rl.LoadWaveFromMemory(".wav", raw_data(WIN_SOUND), i32(len(WIN_SOUND))),
-	)*/
+LAND_SOUND :: #load("../assets/sounds/land.wav")
+WIN_SOUND :: #load("../assets/sounds/win.wav")*/
+
+/*hit_sound = rl.LoadSoundFromWave(
+	rl.LoadWaveFromMemory(".wav", raw_data(HIT_SOUND), i32(len(HIT_SOUND))),
+)
+land_sound = rl.LoadSoundFromWave(
+	rl.LoadWaveFromMemory(".wav", raw_data(LAND_SOUND), i32(len(LAND_SOUND))),
+)
+win_sound = rl.LoadSoundFromWave(
+	rl.LoadWaveFromMemory(".wav", raw_data(WIN_SOUND), i32(len(WIN_SOUND))),
+)*/
 reload_global_data :: proc() {
 	ATLAS_DATA :: #load("atlas.png")
 	atlas_image := rl.LoadImageFromMemory(".png", raw_data(ATLAS_DATA), i32(len(ATLAS_DATA)))
@@ -496,7 +503,10 @@ reset_handles :: proc() {
 // Delete any dynamic memory here
 // and free the memory allocated for game memory.
 shutdown :: proc() {
-	delete(level.platforms)
+	fmt.printf("Shutdown...\n")
+
+	//delete(level.platforms)
+	//free(&level.platforms)
 	//delete(level.edit_screen.menu.nodes)
 	hm.delete(&g.entities)
 	mem.free(g.font.recs)
