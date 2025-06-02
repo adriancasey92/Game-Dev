@@ -337,7 +337,6 @@ update_menu_generic :: proc(menu: ^Menu) {
 //generic draw menu
 draw_menu_generic :: proc(menu: ^Menu, fade: f32) {
 	rl.BeginDrawing()
-	rl.BeginDrawing()
 	rl.ClearBackground(rl.SKYBLUE)
 	rl.BeginMode2D(game_camera())
 	{

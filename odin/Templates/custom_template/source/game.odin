@@ -154,6 +154,7 @@ font: rl.Font
 dt: f32
 real_dt: f32
 
+
 //Stops alt+enter from 'entering' menu selections
 MODIFIER_KEY_DOWN: bool
 
@@ -169,7 +170,6 @@ init_window :: proc() {
 	rl.SetTargetFPS(500)
 	rl.InitAudioDevice()
 	rl.SetExitKey(.KEY_NULL)
-
 }
 
 //Initialise everything to do with the game+systems here
@@ -192,7 +192,10 @@ init :: proc() {
 		run      = true,
 		entities = hm.make(Entity, Entity_Handle, 10000, context.allocator),
 		level    = 0,
+		//game_shader = Game_Shader{},
 	}
+
+	//init_shader()
 	//edit_tex = 0
 	//This automatically creates the player handle for g.player_handle
 	reset_handles()
@@ -517,6 +520,7 @@ shutdown :: proc() {
 shutdown_window :: proc() {
 	rl.CloseAudioDevice()
 	rl.CloseWindow()
+
 }
 
 // In a web build, this is called when browser changes size. Remove the
