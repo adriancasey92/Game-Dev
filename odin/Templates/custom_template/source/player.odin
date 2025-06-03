@@ -86,6 +86,10 @@ update_player :: proc(dt: f32) {
 	} else {p.air_time = 0}
 
 	p.pos += (p.vel * dt)
+
+	create_trail_effect(&g.particle_system, p.pos, p.vel)
+
+
 	//Checking if player is able to run
 	/*if p.can_run {
 		p.pos += (p.vel * running_multiplier) * dt
@@ -147,6 +151,11 @@ update_player :: proc(dt: f32) {
 		}
 	}
 
+	//if we have just landed
+	if p.last_movement == .jumping && p.is_on_ground {
+		create_landing_effect(&g.particle_system, p.pos)
+		p.last_movement = .idle
+	}
 	//fixes issue where player cannot move left after moving around a platform
 	//from the left side to upside down. 
 	if rl.IsKeyReleased(.LEFT) || rl.IsKeyReleased(.A) {
@@ -213,7 +222,9 @@ update_player :: proc(dt: f32) {
 				p.vel.y = -150
 				p.is_on_ground = false
 				p.movement = .jumping
+				p.last_movement = .jumping
 				p.anim = animation_create(.Frog_Jump)
+				create_jump_effect(&g.particle_system, p.pos - {0, p.rect.height / 2})
 				//rl.PlaySound(g.land_sound)
 			}
 		case .rot_left:
@@ -270,6 +281,7 @@ update_player :: proc(dt: f32) {
 
 	//Tongue attack?	
 	if rl.IsMouseButtonPressed(.LEFT) {
+		create_attack_effect(&g.particle_system, p.pos, p.dir)
 		fmt.printf("Player Attac\n")
 		/*if p.can_attack {
 			pos := rl.GetScreenToWorld2D(rl.GetMousePosition(), game_camera())

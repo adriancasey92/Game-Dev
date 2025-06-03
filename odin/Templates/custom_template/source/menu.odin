@@ -115,6 +115,7 @@ draw_menu :: proc(menu: ^Menu, x, y: i32, spacing: f32) {
 				f32(MENU_FONT_SIZE),
 				spacing,
 			)
+
 			if idx == int(menu.selected) {
 				colour = rl.YELLOW
 			} else if idx == int(menu.hovered) {
@@ -206,6 +207,16 @@ draw_menu_settings :: proc(menu: ^Menu, x, y: i32, spacing: f32) {
 //generic menu update function
 update_menu_generic :: proc(menu: ^Menu) {
 
+	mp := rl.GetMousePosition()
+	rl.DrawCircleV(mp, 2, rl.RED)
+	if menu.type == .none {
+		update_mouse_hover_menu(menu, mp)
+	} else {
+		update_mouse_hover_settings(menu, mp)
+	}
+
+
+	//check if mouse is hovering over menu options
 	//handle input first
 	if rl.IsKeyPressed(.UP) || rl.IsKeyPressed(.W) {
 		menu.selected -= 1
@@ -235,7 +246,8 @@ update_menu_generic :: proc(menu: ^Menu) {
 	switch (menu.title) 
 	{
 	case "Main Menu":
-		if rl.IsKeyPressed(.ENTER) && !MODIFIER_KEY_DOWN {
+		if rl.IsKeyPressed(.ENTER) && !MODIFIER_KEY_DOWN ||
+		   (rl.IsMouseButtonPressed(.LEFT) && menu.hovered == menu.selected) {
 			if menu.selected == 0 {
 				// Start Game
 				g.state = .play
@@ -256,7 +268,8 @@ update_menu_generic :: proc(menu: ^Menu) {
 			g.run = false
 		}
 	case "Options":
-		if rl.IsKeyPressed(.ENTER) && !MODIFIER_KEY_DOWN {
+		if rl.IsKeyPressed(.ENTER) && !MODIFIER_KEY_DOWN ||
+		   (rl.IsMouseButtonPressed(.LEFT) && menu.hovered == menu.selected) {
 			if menu.selected == 0 {
 				g.state = .audio_options
 				fmt.printf("Opening audio settings...\n")
@@ -278,7 +291,8 @@ update_menu_generic :: proc(menu: ^Menu) {
 			g.state = g.prev_state
 		}
 	case "Paused":
-		if rl.IsKeyPressed(.ENTER) && !MODIFIER_KEY_DOWN {
+		if rl.IsKeyPressed(.ENTER) && !MODIFIER_KEY_DOWN ||
+		   (rl.IsMouseButtonPressed(.LEFT) && menu.hovered == menu.selected) {
 			if menu.selected == 0 {
 				fmt.printf("Resuming game...\n")
 				g.state = .play
@@ -312,7 +326,8 @@ update_menu_generic :: proc(menu: ^Menu) {
 			g.state = .options
 		}
 
-		if rl.IsKeyPressed(.ENTER) && !MODIFIER_KEY_DOWN {
+		if rl.IsKeyPressed(.ENTER) && !MODIFIER_KEY_DOWN ||
+		   (rl.IsMouseButtonPressed(.LEFT) && menu.hovered == menu.selected) {
 			if menu.selected == 0 {
 				rl.ToggleBorderlessWindowed()
 				g.graphics_settings.windowed = !g.graphics_settings.windowed
@@ -384,4 +399,49 @@ get_settings :: proc(menu: ^Menu) -> [5]cstring {
 	}
 
 	return return_arr
+}
+
+
+update_mouse_hover_menu :: proc(menu: ^Menu, mouse_pos: rl.Vector2) {
+	for i := 0; i < int(menu.num_options); i += 1 {
+		text_size_vec := rl.MeasureTextEx(
+			rl.GetFontDefault(),
+			menu.options[i],
+			f32(MENU_FONT_SIZE),
+			MENU_SPACING,
+		)
+		x := f32(rl.GetScreenWidth() / 2) - text_size_vec.x / 2
+		y := (rl.GetScreenHeight() / 3) + 25 + i32(i) * 25
+
+		if mouse_pos.x >= x &&
+		   mouse_pos.x <= x + text_size_vec.x &&
+		   mouse_pos.y >= f32(y) &&
+		   mouse_pos.y <= f32(y) + text_size_vec.y {
+			menu.hovered = i32(i)
+			menu.selected = i32(i)
+			return
+		}
+	}
+}
+
+update_mouse_hover_settings :: proc(menu: ^Menu, mouse_pos: rl.Vector2) {
+	for i := 0; i < int(menu.num_options); i += 1 {
+		text_size_vec := rl.MeasureTextEx(
+			rl.GetFontDefault(),
+			menu.options[i],
+			f32(MENU_FONT_SIZE),
+			MENU_SPACING,
+		)
+		x := f32(rl.GetScreenWidth() / 2) - text_size_vec.x / 2
+		y := (rl.GetScreenHeight() / 3) + 25 + i32(i) * 25
+
+		if mouse_pos.x >= x &&
+		   mouse_pos.x <= x + text_size_vec.x &&
+		   mouse_pos.y >= f32(y) &&
+		   mouse_pos.y <= f32(y) + text_size_vec.y {
+			menu.hovered = i32(i)
+			menu.selected = i32(i)
+			return
+		}
+	}
 }

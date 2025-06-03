@@ -139,6 +139,9 @@ Game_Memory :: struct {
 	pause_menu:        Menu,
 	state_changed:     bool,
 	graphics_settings: Graphics_Settings,
+
+	//particles?
+	particle_system:   Particle_System,
 }
 
 quadtree: Quadtree
@@ -176,7 +179,7 @@ init_window :: proc() {
 init :: proc() {
 	fmt.printf("Init\n")
 	g = new(Game_Memory)
-
+	g.particle_system = init_particle_system()
 	g.graphics_settings.borderless = false
 	g.graphics_settings.windowed = true
 	g.graphics_settings.fullscreen = false
@@ -258,6 +261,7 @@ update :: proc() {
 		g.run = !g.run
 	}
 
+
 	#partial switch (g.state) 
 	{
 	case .mainMenu:
@@ -282,7 +286,7 @@ update :: proc() {
 update_play :: proc() {
 	dt = rl.GetFrameTime()
 	real_dt = dt
-
+	update_particle_system(&g.particle_system, dt)
 	//camera zoom
 	mouse_scroll := rl.GetMouseWheelMove()
 	if mouse_scroll != 0 {
@@ -394,6 +398,7 @@ draw :: proc() {
 		//we still draw the game in the background with a fade
 		draw_menu_generic(&g.pause_menu, fade)
 	}
+	rl.DrawFPS(10, 10)
 }
 
 draw_play :: proc(fade: f32) {
@@ -405,7 +410,9 @@ draw_play :: proc(fade: f32) {
 	rl.BeginMode2D(game_camera())
 	{
 		draw_level(fade)
+		draw_particle_system(&g.particle_system, fade)
 		draw_player(fade)
+
 	}
 	rl.EndMode2D()
 	rl.BeginMode2D(ui_camera())

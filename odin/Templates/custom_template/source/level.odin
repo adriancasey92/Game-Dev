@@ -1,13 +1,13 @@
 package game
 
-import "core:encoding/json"
+//import "core:encoding/json"
 import "core:fmt"
-import "core:os"
+//import "core:os"
 import rl "vendor:raylib"
 
 Level :: struct {
 	level_chunks: []Level_Chunk,
-	platforms:    [dynamic]Platform,
+	platforms:    [5]Platform,
 	edit_screen:  Edit_Screen,
 }
 
@@ -22,7 +22,7 @@ Level_Chunk :: struct {
 init_level :: proc(level_num: int) {
 	fmt.printf("Initializing level %i\n", level_num)
 	// Load level from file
-	/* := Platform {
+	p := Platform {
 		pos          = centered_pos_from_offset({0, 0}, {96, 16}),
 		size_vec2    = {96, 16},
 		rotation     = 0,
@@ -49,8 +49,8 @@ init_level :: proc(level_num: int) {
 	p.faces = get_rect_faces(p.pos_rect)
 	level.platforms[1] = p
 	//append(&level.platforms, p)
-*/
-	if level_data, ok := os.read_entire_file("assets/level.json", context.temp_allocator); ok {
+
+	/*&if level_data, ok := os.read_entire_file("assets/level.json", context.temp_allocator); ok {
 		if json.unmarshal(level_data, &level) != nil {
 			append(
 				&level.platforms,
@@ -72,7 +72,7 @@ init_level :: proc(level_num: int) {
 	} else {
 		fmt.printf("Failed to load level data\n")
 		return
-	}
+	}*/
 
 
 	//Set up edit screen with -1 as selection index

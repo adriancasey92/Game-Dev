@@ -5,7 +5,8 @@ package game
 //import "base:runtime"
 import "core:fmt"
 import "core:log"
-import "core:os"
+import "core:math/rand"
+import "core:os	"
 import rl "vendor:raylib"
 //import "core:time"
 
@@ -76,4 +77,11 @@ get_width_of_longest_string_in_menu :: proc(menu: ^Menu, spacing: f32) -> f32 {
 
 	}
 	return width
+}
+
+get_random_colour :: proc() -> rl.Color {
+	r := rand.int31() % 256
+	g := rand.int31() % 256
+	b := rand.int31() % 256
+	return rl.Color{u8(r), u8(g), u8(b), 255} // Full opacity
 }

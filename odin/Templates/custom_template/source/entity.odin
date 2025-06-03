@@ -20,6 +20,7 @@ Entity :: struct {
 	pos:               Vec2,
 	size:              Vec2,
 	dir:               Entity_Direction,
+	last_movement:     Entity_Movement,
 	ent_rect:          EntityRect,
 	side_jump:         bool,
 	side_jump_timer:   f32,
