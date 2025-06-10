@@ -5,8 +5,10 @@ package game
 //import "base:runtime"
 import "core:fmt"
 import "core:log"
+import "core:math"
 import "core:math/rand"
 import "core:os	"
+import "core:strings"
 import rl "vendor:raylib"
 //import "core:time"
 
@@ -53,7 +55,7 @@ get_width_of_longest_string_in_menu :: proc(menu: ^Menu, spacing: f32) -> f32 {
 	text_size_vec := rl.MeasureTextEx(
 		rl.GetFontDefault(),
 		menu.title,
-		f32(TITLE_FONT_SIZE),
+		f32(MENU_TITLE_FONT_SIZE),
 		spacing,
 	)
 	width := text_size_vec.x
@@ -84,4 +86,37 @@ get_random_colour :: proc() -> rl.Color {
 	g := rand.int31() % 256
 	b := rand.int31() % 256
 	return rl.Color{u8(r), u8(g), u8(b), 255} // Full opacity
+}
+
+// Check if file exists
+file_exists :: proc(filepath: string) -> bool {
+	return os.exists(filepath)
+	//defer os.file_info_delete(file_info)
+	//return err == nil
+}
+
+temp_cstring :: proc(s: string) -> cstring {
+	return strings.clone_to_cstring(s, context.temp_allocator)
+}
+
+
+//gets font size based on the current zoom
+get_scaled_font_size :: proc() -> f32 {
+	scale_x := f32(rl.GetScreenWidth()) / f32(WIDTH)
+	scale_y := f32(rl.GetScreenHeight()) / f32(HEIGHT)
+	return f32(BASE_FONT_SIZE) * min(scale_x, scale_y)
+}
+
+get_random_pos_within_camera :: proc() -> Vec2 {
+	// Generate a random position within the camera's viewport
+
+	camera := game_camera()
+	min_x := camera.target.x - camera.offset.x / 2
+	max_x := camera.target.x + camera.offset.x / 2
+	min_y := camera.target.y - camera.offset.y / 2
+	max_y := camera.target.y + camera.offset.y / 2
+
+	x := rand.float32_range(min_x, max_x)
+	y := rand.float32_range(min_y, max_y)
+	return Vec2{x, y}
 }

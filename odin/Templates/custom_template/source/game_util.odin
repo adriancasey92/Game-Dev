@@ -7,7 +7,7 @@ pos_to_rect :: proc(pos, size: Vec2) -> Rect {
 	return {pos.x, pos.y, size.x, size.y}
 }
 
-// Used to generate corners for platforms for collision
+// Used to generate corners for platforms  r collision
 get_rect_corners :: proc(rect: Rect) -> [4]Rect {
 	c: [4]Rect
 	size: f32

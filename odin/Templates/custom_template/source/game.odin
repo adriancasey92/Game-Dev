@@ -29,23 +29,37 @@ package game
 
 import hm "../handle_map"
 import "core:fmt"
+import "core:math/rand"
 import "core:mem"
+import "core:strings"
 import rl "vendor:raylib"
 
 //Constants
-CAMERA_ZOOM_BASE :: f32(100)
+CAMERA_ZOOM_BASE :: f32(400)
 CAMERA_ZOOM: f32 = CAMERA_ZOOM_BASE
-CAMERA_ZOOM_MULT: f32 = 0
+CAMERA_ZOOM_MULT: f32 = 1
 CAMERA_ZOOM_MAX :: f32(250)
 CAMERA_ZOOM_MIN :: f32(50)
 GRAVITY :: f32(500)
+USE_GRAVITY :: false
+
+PIXEL_WINDOW_HEIGHT :: 180
+
+//FONT
+BASE_FONT_SIZE: i32 = 20
+
+//WINDOW
+WIDTH :: i32(1280)
+HEIGHT :: i32(720)
 
 //UI SCALE
-UI_SCALE_MULT: f32 = 0
+UI_SCALE_MULT: f32 = 1
 UI_SCALE_BASE :: f32(1)
 
+//ENTITIES
+ENTITES_DRAWN: i32 = 0
 
-//Menu
+//MENU
 MENU_SPACING :: 5
 
 DEBUG_DRAW: bool
@@ -102,11 +116,12 @@ Edit_Platforms :: struct {
 	pos:       Vec2,
 	mouseOver: bool,
 }
+
 Game_Memory :: struct {
 	//Game state
 	state:             Game_State,
 	prev_state:        Game_State,
-	level:             int,
+	level:             Level,
 	won:               bool,
 	game_camera:       rl.Camera2D,
 	settings_sound:    Sound_Settings,
@@ -115,6 +130,7 @@ Game_Memory :: struct {
 	//Resources
 	atlas:             rl.Texture2D,
 	font:              rl.Font,
+	scaled_font_size:  i32,
 	hit_sound:         rl.Sound,
 	land_sound:        rl.Sound,
 	win_sound:         rl.Sound,
@@ -129,7 +145,7 @@ Game_Memory :: struct {
 	run:               bool,
 	won_at:            f64,
 	initialized:       bool,
-	entities:          hm.Handle_Map(Entity, Entity_Handle, 10000),
+	entities:          hm.Handle_Map(Entity, Entity_Handle, MAX_ENTITIES),
 	player_handle:     Entity_Handle,
 	main_menu:         Menu,
 	options_menu:      Menu,
@@ -142,6 +158,15 @@ Game_Memory :: struct {
 
 	//particles?
 	particle_system:   Particle_System,
+
+	//shader
+	frog_shader:       rl.Shader,
+	background_shader: rl.Shader,
+	shader_time:       f32,
+	render_target:     rl.RenderTexture2D,
+
+	//current time
+	current_time:      f64,
 }
 
 quadtree: Quadtree
@@ -157,6 +182,9 @@ font: rl.Font
 dt: f32
 real_dt: f32
 
+//PAUSE
+PAUSE: bool
+
 
 //Stops alt+enter from 'entering' menu selections
 MODIFIER_KEY_DOWN: bool
@@ -165,8 +193,8 @@ MODIFIER_KEY_DOWN: bool
 init_window :: proc() {
 	rl.SetConfigFlags({.WINDOW_RESIZABLE, .VSYNC_HINT})
 	rl.InitWindow(
-		1280,
-		720,
+		WIDTH,
+		HEIGHT,
 		"Template (Odin, Raylib, Hot-Reload, Handle-Map, Texture-Atlas, Quadtree)",
 	)
 	rl.SetWindowPosition(200, 200)
@@ -177,24 +205,24 @@ init_window :: proc() {
 
 //Initialise everything to do with the game+systems here
 init :: proc() {
-	fmt.printf("Init\n")
 	g = new(Game_Memory)
-	g.particle_system = init_particle_system()
-	g.graphics_settings.borderless = false
-	g.graphics_settings.windowed = true
-	g.graphics_settings.fullscreen = false
-	//load the raw data into atlas_image
-	atlas_image := rl.LoadImageFromMemory(".png", raw_data(ATLAS_DATA), i32(len(ATLAS_DATA)))
-	//font = load_atlased_font()a
-
+	init_shaders()
+	atlas_image := rl.LoadImageFromMemory(".png", raw_data(ATLAS_DATA), i32(len(ATLAS_DATA))) //load the raw data into atlas_image
+	rl.GuiLoadStyle("../assets/guistyle/bluish.h")
+	//shader stuff
+	rl.GuiSetStyle(.DEFAULT, i32(rl.GuiDefaultProperty.TEXT_SIZE), MENU_FONT_SIZE)
 	// Set the shapes drawing texture, this makes rl.DrawRectangleRec etc use the atlas
 	rl.SetShapesTexture(atlas, SHAPES_TEXTURE_RECT)
 	g^ = Game_Memory {
-		state    = .mainMenu,
-		atlas    = rl.LoadTextureFromImage(atlas_image),
-		run      = true,
-		entities = hm.make(Entity, Entity_Handle, 10000, context.allocator),
-		level    = 0,
+		state = .mainMenu,
+		atlas = rl.LoadTextureFromImage(atlas_image),
+		run = true,
+		entities = hm.make(Entity, Entity_Handle, MAX_ENTITIES, context.allocator),
+		graphics_settings = Graphics_Settings {
+			borderless = false,
+			windowed = true,
+			fullscreen = false,
+		},
 		//game_shader = Game_Shader{},
 	}
 
@@ -202,6 +230,18 @@ init :: proc() {
 	//edit_tex = 0
 	//This automatically creates the player handle for g.player_handle
 	reset_handles()
+
+	for i := 0; i < 50; i += 1 {
+		create_random_entity(
+			.goblin,
+			Vec2 {
+				rand.float32_range(0 - f32(WIDTH) / 2, 0 + f32(WIDTH) / 2),
+				rand.float32_range(0 - f32(HEIGHT) / 2, 0 + f32(HEIGHT) / 2),
+			},
+		)
+
+	}
+
 	//we no longer need this image as we have our atlas
 	rl.UnloadImage(atlas_image)
 
@@ -229,7 +269,7 @@ init :: proc() {
 
 	// Set up current level
 	init_menu()
-	init_level(g.level)
+	init_level(&g.level)
 	game_hot_reloaded(g)
 }
 
@@ -243,6 +283,9 @@ update :: proc() {
 		MODIFIER_KEY_DOWN = false
 	}
 
+	if rl.IsWindowState({.WINDOW_TOPMOST}) {
+		rl.ClearWindowState({.WINDOW_TOPMOST})
+	}
 	//Have all features that will work regardless of state here
 	//Borderless window toggle
 	if rl.IsKeyPressed(.ENTER) && MODIFIER_KEY_DOWN {
@@ -256,18 +299,23 @@ update :: proc() {
 		DEBUG_DRAW = !DEBUG_DRAW
 	}
 
+	if rl.IsKeyPressed(.P) {
+		PAUSE = !PAUSE
+	}
+
 	//close game
 	if (rl.WindowShouldClose()) {
 		g.run = !g.run
 	}
-
 
 	#partial switch (g.state) 
 	{
 	case .mainMenu:
 		update_menu_generic(&g.main_menu)
 	case .play:
-		update_play()
+		if !PAUSE {
+			update_play()
+		}
 	case .quadtree:
 		update_quadtree()
 	case .options:
@@ -287,6 +335,26 @@ update_play :: proc() {
 	dt = rl.GetFrameTime()
 	real_dt = dt
 	update_particle_system(&g.particle_system, dt)
+
+	if rl.IsMouseButtonPressed(.LEFT) {
+		m_pos_world := rl.GetScreenToWorld2D(rl.GetMousePosition(), game_camera())
+		ent_iter := hm.make_iter(&g.entities)
+		for e, h in hm.iter(&ent_iter) {
+			if rl.CheckCollisionPointRec(m_pos_world, e.rect) {
+				if h == g.player_handle {
+					//we clicked on the player
+					fmt.printf("Clicked on player!\n")
+				} else {
+					//we clicked on another entity
+					fmt.printf("Clicked on entity with handle: %v\nof type: %v\n", h, e.kind)
+					e.debug_draw_bool = !e.debug_draw_bool
+				}
+			}
+		}
+		if rl.CheckCollisionPointRec(m_pos_world, get_player().rect) {
+			//DO ENTITY STUFF
+		}
+	}
 	//camera zoom
 	mouse_scroll := rl.GetMouseWheelMove()
 	if mouse_scroll != 0 {
@@ -348,12 +416,13 @@ update_play :: proc() {
 	if g.editing {
 		fmt.printf("TODO - Editor update\n")
 		//editor_update()
+		return
 	}
 
 	//PHYSICS
 	g.time_accumulator += dt
 	PHYSICS_STEP :: 1 / 60.0
-	/*for g.time_accumulator >= PHYSICS_STEP {
+	/*for g.timentity_handle_accumulator >= PHYSICS_STEP {
 		//do physics step
 		//fmt.printf("TODO - Physics step\n")
 		g.time_accumulator -= PHYSICS_STEP
@@ -361,7 +430,8 @@ update_play :: proc() {
 	}*/
 
 	//Update player
-	update_player(dt)
+	update_entities(dt)
+	//update_player(dt)
 }
 
 update_quadtree :: proc() {
@@ -398,25 +468,104 @@ draw :: proc() {
 		//we still draw the game in the background with a fade
 		draw_menu_generic(&g.pause_menu, fade)
 	}
-	rl.DrawFPS(10, 10)
+
+	font_size := get_scaled_font_size()
+	text_size := rl.MeasureTextEx(
+		rl.GetFontDefault(),
+		rl.TextFormat("%i FPS", rl.GetFPS()),
+		font_size,
+		MENU_SPACING,
+	)
+	rl.DrawTextEx(
+		rl.GetFontDefault(),
+		rl.TextFormat("%i FPS", rl.GetFPS()),
+		{f32(rl.GetScreenWidth()) - (text_size.x + 10), 10},
+		font_size,
+		MENU_SPACING,
+		rl.BLACK,
+	)
+
+	text_size = rl.MeasureTextEx(
+		rl.GetFontDefault(),
+		rl.TextFormat("Entities Drawn: %i/%i", ENTITES_DRAWN, hm.len(g.entities)),
+		font_size,
+		MENU_SPACING,
+	)
+
+	rl.DrawTextEx(
+		rl.GetFontDefault(),
+		rl.TextFormat("Entities Drawn: %i/%i", ENTITES_DRAWN, hm.len(g.entities)),
+		{
+			f32(rl.GetScreenWidth()) - (text_size.x + 10),
+			f32(rl.GetScreenHeight()) - (text_size.y + 40),
+		},
+		font_size,
+		MENU_SPACING,
+		rl.BLACK,
+	)
+
+	text_size = rl.MeasureTextEx(
+		rl.GetFontDefault(),
+		rl.TextFormat("Entities: %i", hm.len(g.entities)),
+		font_size,
+		MENU_SPACING,
+	)
+
+	rl.DrawTextEx(
+		rl.GetFontDefault(),
+		rl.TextFormat("Entities: %i", hm.len(g.entities)),
+		{
+			f32(rl.GetScreenWidth()) - (text_size.x + 10),
+			f32(rl.GetScreenHeight()) - (text_size.y + 10),
+		},
+		font_size,
+		MENU_SPACING,
+		rl.BLACK,
+	)
 }
 
 draw_play :: proc(fade: f32) {
 	//fade := f32(1)
 	rl.BeginDrawing()
 	rl.ClearBackground(rl.SKYBLUE)
-	//rl.ClearBackground(rl.SKYBLUE)
+
+
 	//Draw using game_camera
 	rl.BeginMode2D(game_camera())
 	{
 		draw_level(fade)
 		draw_particle_system(&g.particle_system, fade)
-		draw_player(fade)
+		draw_entities(fade)
+		//draw_player(fade)
 
 	}
 	rl.EndMode2D()
-	rl.BeginMode2D(ui_camera())
-	rl.EndMode2D()
+	/*rl.BeginMode2D(ui_camera())
+	rl.EndMode2D()*/
+
+	//if DEBUG_DRAW {draw_player_debug()}
+	if DEBUG_DRAW {
+		for &item, h in g.entities.items {
+			if hm.skip(item) {
+				// If you want to skip drawing this entity, you can continue here
+				continue
+			}
+			if within_camera_bounds(item.handle) {
+				if item.kind == .player {
+					debug_draw_entity(g.player_handle, {0, 0})
+				} else {
+					if item.debug_draw_bool {
+						// Draw debug info for the entity
+						debug_draw_entity(
+							item.handle,
+							rl.GetWorldToScreen2D(item.pos, game_camera()),
+						)
+					}
+				}
+			}
+		}
+	}
+
 	rl.EndDrawing()
 }
 
@@ -453,6 +602,7 @@ refresh_globals :: proc() {
 	reload_global_data()
 	atlas = g.atlas
 	font = g.font
+	rl.GuiSetStyle(.DEFAULT, i32(rl.GuiDefaultProperty.TEXT_SIZE), MENU_FONT_SIZE)
 	//GLOB_player = hm.get(g.entities, g.player_handle)
 	//GLOB_player.anim = animation_create(.Frog_Move)
 }
@@ -486,26 +636,7 @@ reload_global_data :: proc() {
 //Clear the handles in our handlemap, and re-create player handle. 
 reset_handles :: proc() {
 	hm.clear(&g.entities)
-	g.player_handle = hm.add(
-		&g.entities,
-		Entity {
-			anim = animation_create(.Frog_Idle),
-			pos = {0, 0},
-			rect = {},
-			dir = .left,
-			can_run = true,
-			vel = {0, 0},
-			is_on_ground = true,
-			movement = .idle,
-			orientation = .norm,
-			flip_x = false,
-			flip_y = false,
-			feet_collider = Rect{},
-			face_collider = Rect{},
-			head_collider = Rect{},
-			corner_collider = Rect{},
-		},
-	)
+	create_player_entity({0, 0})
 }
 
 //Memory management
@@ -514,7 +645,8 @@ reset_handles :: proc() {
 // and free the memory allocated for game memory.
 shutdown :: proc() {
 	fmt.printf("Shutdown...\n")
-
+	rl.UnloadRenderTexture(g.render_target)
+	rl.UnloadShader(g.frog_shader)
 	//delete(level.platforms)
 	//free(&level.platforms)
 	//delete(level.edit_screen.menu.nodes)

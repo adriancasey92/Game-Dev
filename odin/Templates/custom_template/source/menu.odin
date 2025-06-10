@@ -2,14 +2,15 @@ package game
 import "core:fmt"
 import rl "vendor:raylib"
 
-TITLE_FONT_SIZE: i32 = 50
+MENU_TITLE_FONT_SIZE: i32 = 50
 MENU_FONT_SIZE: i32 = 25
-
 
 Menu :: struct {
 	title:             cstring,
 	options:           [5]cstring,
-	values:            [5]cstring,
+	options_pos:       [5]Vec2,
+	values_pos:        [5]Vec2,
+	rect:              Rect,
 	selected, hovered: i32,
 	num_options:       i32,
 	type:              Menu_Type,
@@ -29,6 +30,7 @@ init_menu :: proc() {
 		num_options = 3,
 		type        = .none,
 	}
+
 
 	g.options_menu = Menu {
 		title       = "Options",
@@ -59,7 +61,7 @@ init_menu :: proc() {
 
 	g.graphics_menu = Menu {
 		title       = "Graphics Settings",
-		options     = {"Fullscreen", "Resolution", "Zoom", "", ""},
+		options     = {"Fullscreen", "Resolution", "Zoom", "Back", ""},
 		selected    = 0,
 		hovered     = -1,
 		num_options = 4,
@@ -73,142 +75,166 @@ init_menu :: proc() {
 		num_options = 4,
 		type        = .settings,
 	}
+
+	calc_menu_positions(&g.main_menu)
+	calc_menu_positions(&g.pause_menu)
+	calc_menu_positions(&g.options_menu)
+	calc_menu_positions(&g.audio_menu)
+	calc_menu_positions(&g.graphics_menu)
+	calc_menu_positions(&g.control_menu)
+}
+
+calc_menu_positions :: proc(menu: ^Menu) {
+	menu_x := rl.GetScreenWidth() / 2
+	menu_y := rl.GetScreenHeight() / 3
+
+	ypos := menu_y + 20
+	pad := f32(50)
+	text_size_vec := rl.MeasureTextEx(
+		rl.GetFontDefault(),
+		menu.title,
+		f32(MENU_TITLE_FONT_SIZE),
+		MENU_SPACING,
+	)
+	menu.rect.x = f32(menu_x) - text_size_vec.x / 2 - (pad / 2)
+	menu.rect.y = f32(menu_y) - text_size_vec.y / 3 - (f32(pad) / 2)
+	menu.rect.width = get_width_of_longest_string_in_menu(menu, MENU_SPACING) + pad
+	menu.rect.height = f32(ypos) + (pad / 2) + (f32(menu.num_options)) * (pad / 2) + pad / 2
+	menu.rect.height = menu.rect.height - menu.rect.y
+
+	//calculate the settings positions too
+	settings: [5]cstring
+	if menu.type == .settings {
+		settings = get_settings(menu)
+	}
+	for option, idx in menu.options {
+		//left side settings text
+		if menu.type == .settings {
+			menu.options_pos[idx] = {
+				f32(menu.rect.x + pad / 2),
+				f32(ypos) + (pad / 2) + f32(idx) * (pad / 2),
+			}
+		} else {
+			menu.options_pos[idx] = {f32(menu_x), f32(ypos) + (pad / 2) + f32(idx) * (pad / 2)}
+		}
+
+		text_size_vec = rl.MeasureTextEx(
+			rl.GetFontDefault(),
+			settings[idx],
+			f32(MENU_FONT_SIZE),
+			MENU_SPACING,
+		)
+		if menu.type == .settings {
+			menu.values_pos[idx] = {
+				f32(((menu.rect.x + menu.rect.width) - (pad / 2))),
+				f32(ypos + 25 + i32(idx) * 25),
+			}
+		}
+	}
+}
+
+//draw a menu using RayGui elements	instead of custom drawing
+// x and y are the position of our Title centered. 
+// knowing this we need to build our GUI with offsets in mind. 
+draw_menu_RayGui :: proc(menu: ^Menu, x, y: i32, spacing: f32) {
+	//the padding around our widest text-width object, and our top and bottom
+	//objects in the menu
+	pad := f32(20)
+	//our Menu rect
+	rect: Rect
+	//first we find the title size. 
+	title_size := rl.MeasureTextEx(
+		rl.GetFontDefault(),
+		menu.title,
+		f32(MENU_TITLE_FONT_SIZE),
+		spacing,
+	)
+
+	//the width of our longest string
+	longest_string := get_width_of_longest_string_in_menu(menu, spacing)
+	height_of_options :=
+		rl.MeasureTextEx(rl.GetFontDefault(), menu.options[0], f32(MENU_FONT_SIZE), spacing).y
+
+	button_height := height_of_options + (pad / 2)
+
+	//adjust our rect offsets accordingly
+	rect.y = f32(y) - ((title_size.y / 2) + pad)
+	rect.x = f32(x) - ((longest_string / 2) + pad)
+	rect.width = longest_string + (pad * 2)
+	rect.height = (pad * 2 + title_size.y) + (button_height * f32(menu.num_options)) + (pad)
+
+	rl.DrawRectangleRec(rect, rl.Fade(rl.GRAY, 0.6))
+	rl.DrawRectangleLinesEx(rect, 2, rl.BLACK)
+	draw_text_centered_spacing(menu.title, x, y, MENU_TITLE_FONT_SIZE, rl.RAYWHITE, spacing)
+	//next we figure out our first button y value, and draw it centered on x
+	button_y := f32(y) + title_size.y / 2 + (pad / 2)
+
+	for i := 0; i < int(menu.num_options); i += 1 {
+		button_width :=
+			rl.MeasureTextEx(rl.GetFontDefault(), menu.options[i], f32(MENU_FONT_SIZE), spacing).x
+
+		button_x := f32(x) - (button_width / 2)
+
+		if (rl.GuiButton({button_x, button_y, button_width, button_height}, menu.options[i])) {
+
+		}
+		button_y += pad * 2
+	}
 }
 
 draw_menu :: proc(menu: ^Menu, x, y: i32, spacing: f32) {
-	//Draw menu heading
-
+	calc_menu_positions(menu)
 	colour := rl.RAYWHITE
-	ypos := y + 20
+	rl.DrawRectangleRec(menu.rect, rl.Fade(rl.GRAY, 0.6))
+	rl.DrawRectangleLinesEx(menu.rect, 2, rl.BLACK)
+	draw_text_centered_spacing(menu.title, x, y, MENU_TITLE_FONT_SIZE, colour, spacing)
 
-	//rl.DrawCircle(x, y,2, rl.RED)
-	//drawing a rectangle around menu
-	pad := f32(50)
-	text_size_vec := rl.MeasureTextEx(
-		rl.GetFontDefault(),
-		menu.title,
-		f32(TITLE_FONT_SIZE),
-		spacing,
-	)
-	rect_x := f32(x) - text_size_vec.x / 2 - (pad / 2)
-	rect_y := f32(y) - text_size_vec.y / 3 - (f32(pad) / 2)
-	rect_width := get_width_of_longest_string_in_menu(menu, spacing)
-	rect_width += pad
-	rect_height := f32(0)
-	rect_height = (f32(ypos) + 25 + (f32(menu.num_options)) * 25)
-	rect_height = rect_height - rect_y
-
-	rl.DrawRectangle(
-		i32(rect_x),
-		i32(rect_y),
-		i32(rect_width),
-		i32(rect_height),
-		rl.Fade(rl.GRAY, 0.6),
-	)
-
-	draw_text_centered_spacing(menu.title, x, y, TITLE_FONT_SIZE, rl.RAYWHITE, spacing)
-	for option, idx in menu.options {
-		if option != "" {
-			text_size_vec = rl.MeasureTextEx(
-				rl.GetFontDefault(),
-				menu.options[idx],
-				f32(MENU_FONT_SIZE),
-				spacing,
-			)
-
-			if idx == int(menu.selected) {
-				colour = rl.YELLOW
-			} else if idx == int(menu.hovered) {
-				colour = rl.LIGHTGRAY
-			} else {
-				colour = rl.RAYWHITE
-			}
-			draw_text_centered_spacing(
-				menu.options[idx],
-				x,
-				ypos + 25 + i32(idx) * 25,
-				MENU_FONT_SIZE,
-				colour,
-				spacing,
-			)
-		}
+	for i := 0; i < int(menu.num_options); i += 1 {
+		draw_text_centered_spacing(
+			menu.options[i],
+			i32(menu.options_pos[i].x),
+			i32(menu.options_pos[i].y),
+			MENU_FONT_SIZE,
+			colour,
+			spacing,
+		)
 	}
-	//rect_height = rect_height - rect_y
-	rl.DrawRectangleLines(i32(rect_x), i32(rect_y), i32(rect_width), i32(rect_height), rl.BLACK)
 }
 
-//used for the different options settings
 draw_menu_settings :: proc(menu: ^Menu, x, y: i32, spacing: f32) {
+	calc_menu_positions(menu)
 	colour := rl.RAYWHITE
-	ypos := y + 20
-	pad := f32(50)
-	text_size_vec := rl.MeasureTextEx(
-		rl.GetFontDefault(),
-		menu.title,
-		f32(TITLE_FONT_SIZE),
-		spacing,
-	)
-	rect_x := f32(x) - text_size_vec.x / 2 - (pad / 2)
-	rect_y := f32(y) - text_size_vec.y / 3 - (f32(pad) / 2)
-	rect_width := get_width_of_longest_string_in_menu(menu, spacing)
-	rect_width += pad
-	rect_height := f32(0)
-	rect_height = (f32(ypos) + 25 + (f32(menu.num_options)) * 25) + pad / 2
-	rect_height = rect_height - rect_y
-
-	rl.DrawRectangle(
-		i32(rect_x),
-		i32(rect_y),
-		i32(rect_width),
-		i32(rect_height),
-		rl.Fade(rl.GRAY, 0.6),
-	)
+	rl.DrawRectangleRec(menu.rect, rl.Fade(rl.GRAY, 0.6))
+	rl.DrawRectangleLinesEx(menu.rect, 2, rl.BLACK)
+	draw_text_centered_spacing(menu.title, x, y, MENU_TITLE_FONT_SIZE, colour, spacing)
 	settings := get_settings(menu)
-	draw_text_centered_spacing(menu.title, x, y, TITLE_FONT_SIZE, rl.RAYWHITE, spacing)
-	for option, idx in menu.options {
-		if option != "" {
-			colour = rl.RAYWHITE
-			text_size_vec = rl.MeasureTextEx(
-				rl.GetFontDefault(),
-				menu.options[idx],
-				f32(MENU_FONT_SIZE),
-				1,
-			)
-			draw_text_left_aligned_spacing(
-				menu.options[idx],
-				i32(rect_x + (pad / 2)),
-				ypos + 25 + i32(idx) * 25,
-				MENU_FONT_SIZE,
-				colour,
-				spacing,
-			)
+	for i := 0; i < int(menu.num_options); i += 1 {
+		draw_text_left_aligned_spacing(
+			menu.options[i],
+			i32(menu.options_pos[i].x),
+			i32(menu.options_pos[i].y),
+			MENU_FONT_SIZE,
+			colour,
+			spacing,
+		)
 
-			if idx == int(menu.selected) {
-				colour = rl.YELLOW
-			} else if idx == int(menu.hovered) {
-				colour = rl.LIGHTGRAY
-			} else {
-				colour = rl.RAYWHITE
-			}
-			draw_text_right_aligned_spacing(
-				settings[idx],
-				i32(rect_x + rect_width - pad),
-				ypos + 25 + i32(idx) * 25,
-				MENU_FONT_SIZE,
-				colour,
-				spacing,
-			)
-
-		}
+		draw_text_right_aligned_spacing(
+			settings[i],
+			i32(menu.values_pos[i].x),
+			i32(menu.values_pos[i].y),
+			MENU_FONT_SIZE,
+			colour,
+			spacing,
+		)
 	}
-	rl.DrawRectangleLines(i32(rect_x), i32(rect_y), i32(rect_width), i32(rect_height), rl.BLACK)
 }
 
 //generic menu update function
 update_menu_generic :: proc(menu: ^Menu) {
 
+
 	mp := rl.GetMousePosition()
-	rl.DrawCircleV(mp, 2, rl.RED)
+	//rl.DrawCircleV(mp, 2, rl.RED)
 	if menu.type == .none {
 		update_mouse_hover_menu(menu, mp)
 	} else {
@@ -347,6 +373,8 @@ update_menu_generic :: proc(menu: ^Menu) {
 			g.state = .options
 		}
 	}
+
+
 }
 
 //generic draw menu
@@ -371,6 +399,7 @@ draw_menu_generic :: proc(menu: ^Menu, fade: f32) {
 		draw_menu_settings(menu, w / 2, h / 3, MENU_SPACING)
 	} else {
 		draw_menu(menu, w / 2, h / 3, MENU_SPACING)
+		//draw_menu_RayGui(menu, w / 2, h / 3, MENU_SPACING)
 	}
 
 	rl.EndDrawing()
@@ -420,6 +449,8 @@ update_mouse_hover_menu :: proc(menu: ^Menu, mouse_pos: rl.Vector2) {
 			menu.hovered = i32(i)
 			menu.selected = i32(i)
 			return
+		} else {
+			menu.hovered = -1
 		}
 	}
 }
@@ -442,6 +473,8 @@ update_mouse_hover_settings :: proc(menu: ^Menu, mouse_pos: rl.Vector2) {
 			menu.hovered = i32(i)
 			menu.selected = i32(i)
 			return
+		} else {
+			menu.hovered = -1
 		}
 	}
 }

@@ -15,26 +15,7 @@ resetPlayer :: proc() {
 	if p := hm.get(g.entities, g.player_handle); p != nil {
 		hm.remove(&g.entities, g.player_handle)
 	}
-	// Recreate player and assign that entity to g.player_handle
-	g.player_handle = hm.add(
-		&g.entities,
-		Entity {
-			anim = animation_create(.Frog_Idle),
-			pos = {0, 0},
-			dir = .left,
-			vel = {0, 0},
-			size = {},
-			is_on_ground = true,
-			movement = .idle,
-			orientation = .norm,
-			flip_x = false,
-			flip_y = false,
-			feet_collider = Rect{},
-			face_collider = Rect{},
-			head_collider = Rect{},
-			corner_collider = Rect{},
-		},
-	)
+	create_player_entity({0, 0})
 }
 
 //returns center pos of player. 
@@ -69,7 +50,11 @@ update_player :: proc(dt: f32) {
 
 	if !p.wall_climbing {
 		//fmt.printf("Adding gravity?\n")
-		p.vel.y += GRAVITY * dt
+		if USE_GRAVITY {
+			p.vel.y += GRAVITY * dt
+		} else {
+			p.vel.y += 0 * dt
+		}
 	} else {
 		p.vel.y += 0 * dt
 	}
@@ -87,7 +72,7 @@ update_player :: proc(dt: f32) {
 
 	p.pos += (p.vel * dt)
 
-	create_trail_effect(&g.particle_system, p.pos, p.vel)
+	//create_trail_effect(&g.particle_system, p.pos, p.vel)
 
 
 	//Checking if player is able to run
@@ -153,7 +138,7 @@ update_player :: proc(dt: f32) {
 
 	//if we have just landed
 	if p.last_movement == .jumping && p.is_on_ground {
-		create_landing_effect(&g.particle_system, p.pos)
+		create_landing_effect(&g.particle_system, p.pos, i32(p.platform_index))
 		p.last_movement = .idle
 	}
 	//fixes issue where player cannot move left after moving around a platform
@@ -224,7 +209,11 @@ update_player :: proc(dt: f32) {
 				p.movement = .jumping
 				p.last_movement = .jumping
 				p.anim = animation_create(.Frog_Jump)
-				create_jump_effect(&g.particle_system, p.pos - {0, p.rect.height / 2})
+				create_jump_effect(
+					&g.particle_system,
+					p.pos - {0, p.rect.height / 2},
+					i32(p.platform_index),
+				)
 				//rl.PlaySound(g.land_sound)
 			}
 		case .rot_left:
@@ -372,7 +361,7 @@ update_player :: proc(dt: f32) {
 	}
 
 	//checking if we have collided with feet collider - if we aren't moving we are idle. 
-	for platform in level.platforms {
+	/*for platform in level.platforms {
 		if platform.exists {
 			//feet collider
 			if p.action != .jumping {
@@ -397,7 +386,7 @@ update_player :: proc(dt: f32) {
 						p.is_on_ground = true
 						p.vel.y = 0
 						p.pos.y = platform.pos_rect.y - p.size.y - 1
-
+						p.platform_index = platform.index
 						if p.movement != .idle {
 							if p.input.x == 0 {
 								p.movement = .idle
@@ -409,7 +398,7 @@ update_player :: proc(dt: f32) {
 				}
 			}
 		}
-	}
+	}*/
 
 	//if we have not collided with any platforms, we are not grounded
 	if !has_collided && !p.wall_climbing {
@@ -437,7 +426,7 @@ update_player :: proc(dt: f32) {
 	}
 
 	//corner collision and wall walking/climbing detection
-	for platform in level.platforms {
+	/*for platform in level.platforms {
 		if platform.exists {
 			//check if player is colliding with the corner of a platform
 			for c, c_idx in platform.corners {
@@ -511,7 +500,7 @@ update_player :: proc(dt: f32) {
 				}
 			}
 		}
-	}
+	}*/
 
 	update_player_colliders()
 	//JUMPING
@@ -765,13 +754,13 @@ draw_player :: proc(fade: f32) {
 	rl.DrawTexturePro(atlas, atlas_rect, dest, origin, rotation, rl.Fade(rl.WHITE, fade))
 
 	//DEBUG
-	if DEBUG_DRAW {draw_player_debug()}
 	if DEBUG_DRAW_COLLIDERS {draw_player_colliders()}
 }
 
 draw_player_debug :: proc() {
+
 	p := get_player()
-	font_size := f32(10)
+	font_size := get_scaled_font_size()
 	rl.DrawRectangleLines(
 		i32(p.rect.x),
 		i32(p.rect.y),
@@ -787,9 +776,10 @@ draw_player_debug :: proc() {
 		2,
 		rl.RED,
 	)
+
 	text_pos := rl.GetScreenToWorld2D({0, 0}, game_camera())
-	col_2 :=
-		rl.MeasureText(rl.TextFormat("Player Grounded?: %v", p.is_on_ground), i32(font_size)) + 10
+
+	col_2 := rl.MeasureText(rl.TextFormat("Player Grounded?: %v", p.is_on_ground), i32(font_size))
 	rl.DrawTextEx(
 		rl.GetFontDefault(),
 		rl.TextFormat("Player Grounded: %v", p.is_on_ground),

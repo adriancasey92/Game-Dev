@@ -12,7 +12,6 @@ Graphics_Settings :: struct {
 	windowed:   bool,
 }
 
-
 Sound_Settings :: struct {
 	sfx:        f32,
 	music:      f32,
@@ -43,6 +42,4 @@ load_sounds :: proc() {
 	context.logger = log.create_console_logger(opt = {.Level})
 	default_context = context
 	//start_time := time.now()
-
-
 }

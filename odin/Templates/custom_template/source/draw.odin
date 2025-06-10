@@ -45,13 +45,15 @@ draw_text_left_aligned :: proc(text: cstring, x, y, font_size: i32, color: rl.Co
 	rl.DrawTextEx(rl.GetFontDefault(), text, {f32(x), f32(y)}, f32(font_size), 1, color)
 }
 
+//Takes the exact position text needs to be right-aligned to and measures text
+//width before drawing
 draw_text_right_aligned_spacing :: proc(
 	text: cstring,
 	x, y, font_size: i32,
 	color: rl.Color,
 	spacing: f32,
 ) {
-	text_size := rl.MeasureTextEx(rl.GetFontDefault(), text, f32(font_size), 1)
+	text_size := rl.MeasureTextEx(rl.GetFontDefault(), text, f32(font_size), MENU_SPACING)
 	rl.DrawTextEx(
 		rl.GetFontDefault(),
 		text,

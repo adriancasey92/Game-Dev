@@ -1,8 +1,12 @@
 @echo off
 
-
+echo "Building atlas image..."
 odin run atlas_builder.odin -file
 
+echo "Building chunk_converter.exe..."
+odin build chunk_converter/chunk_converter.odin -file
+echo "Converting chunks!..."
+chunk_converter.exe convert-all -i data/chunks/json -o data/chunks/binary
 
 set GAME_RUNNING=false
 :: OUT_DIR is for everything except the exe. The exe needs to stay in root
@@ -50,7 +54,7 @@ echo %PDB_NUMBER% > %GAME_PDBS_DIR%\pdb_number
 :: Also note that we always write game.dll to the same file. game_hot_reload.exe
 :: monitors this file and does the hot reload when it changes.
 echo Building game.dll
-odin build source -strict-style -vet -debug -define:RAYLIB_SHARED=true -build-mode:dll -out:%OUT_DIR%/game.dll -pdb-name:%GAME_PDBS_DIR%\game_%PDB_NUMBER%.pdb > nul
+odin build source -strict-style  -debug -define:RAYLIB_SHARED=true -build-mode:dll -out:%OUT_DIR%/game.dll -pdb-name:%GAME_PDBS_DIR%\game_%PDB_NUMBER%.pdb > nul
 IF %ERRORLEVEL% NEQ 0 exit /b 1
 
 :: If game.exe already running: Then only compile game.dll and exit cleanly
@@ -60,7 +64,7 @@ if %GAME_RUNNING% == true (
 
 :: Build game.exe, which starts the program and loads game.dll och does the logic for hot reloading.
 echo Building %EXE%
-odin build source\main_hot_reload -strict-style -vet -debug -out:%EXE% -pdb-name:%OUT_DIR%\main_hot_reload.pdb
+odin build source\main_hot_reload -strict-style  -debug -out:%EXE% -pdb-name:%OUT_DIR%\main_hot_reload.pdb
 IF %ERRORLEVEL% NEQ 0 exit /b 1
 
 set ODIN_PATH=

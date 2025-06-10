@@ -12,7 +12,7 @@ Particle :: struct {
 	life:     f32,
 	max_life: f32,
 	color:    rl.Color,
-	size:     f32,
+	//size:     f32,
 	active:   bool,
 	type:     Particle_Type,
 }
@@ -53,7 +53,17 @@ find_inactive_particle :: proc(ps: ^Particle_System) -> int {
 }
 
 // Create jump particles (dust going downward)
-create_jump_effect :: proc(ps: ^Particle_System, player_pos: rl.Vector2) {
+create_jump_effect :: proc(ps: ^Particle_System, player_pos: rl.Vector2, index: i32) {
+
+	/*//using the platform texture color for the jump effect
+	img := rl.LoadImageFromTexture(g.atlas)
+	defer rl.UnloadImage(img)
+	col := rl.GetImageColor(
+		img,
+		i32(level.platforms[index].texture_rect.x + level.platforms[index].texture_rect.width / 2),
+		i32(level.platforms[index].texture_rect.y),
+	)
+
 	for i := 0; i < 8; i += 1 {
 		index := find_inactive_particle(ps)
 		if index == -1 do continue
@@ -70,14 +80,21 @@ create_jump_effect :: proc(ps: ^Particle_System, player_pos: rl.Vector2) {
 		}
 		p.life = 0.6 + f32(rand.int31() % 20) * 0.01 // 0.6-0.8 seconds
 		p.max_life = p.life
-		p.color = rl.GRAY // Brown dust color
-		p.size = 2.0 + f32(rand.int31() % 3)
-		ps.active_count += 1
-	}
+		p.color = col
+
+	}*/
 }
 
 // Create landing particles (burst outward)
-create_landing_effect :: proc(ps: ^Particle_System, player_pos: rl.Vector2) {
+create_landing_effect :: proc(ps: ^Particle_System, player_pos: rl.Vector2, index: i32) {
+
+	/*img := rl.LoadImageFromTexture(g.atlas)
+	defer rl.UnloadImage(img)
+	col := rl.GetImageColor(
+		img,
+		i32(level.platforms[index].texture_rect.x + level.platforms[index].texture_rect.width / 2),
+		i32(level.platforms[index].texture_rect.y),
+	)
 	for i := 1; i < 12; i += 1 {
 		index := find_inactive_particle(ps)
 		if index == -1 do continue
@@ -96,10 +113,10 @@ create_landing_effect :: proc(ps: ^Particle_System, player_pos: rl.Vector2) {
 
 		p.life = 0.8 + f32(rand.int31() % 30) * 0.01
 		p.max_life = p.life
-		p.color = rl.GRAY // Sandy brown
-		p.size = 3.0 + f32(rand.int31() % 3)
+		p.color = col // Sandy brown
+		//p.size = 3.0 + f32(rand.int31() % 3)
 		ps.active_count += 1
-	}
+	}*/
 }
 
 // Create attack particles (directional burst)
@@ -129,7 +146,7 @@ create_attack_effect :: proc(ps: ^Particle_System, attack_pos: rl.Vector2, dir: 
 		p.life = 0.4 + f32(rand.int31() % 20) * 0.01
 		p.max_life = p.life
 		p.color = rl.GOLD // Golden color for impact
-		p.size = 2.0 + f32(rand.int31() % 2)
+		//p.size = 2.0 + f32(rand.int31() % 2)
 		ps.active_count += 1
 	}
 }
@@ -146,7 +163,7 @@ create_trail_effect :: proc(ps: ^Particle_System, player_pos: rl.Vector2, player
 	p.life = 0.5 + f32(rand.int31() % 20) * 0.01 // 0.5-0.7 seconds
 	p.max_life = p.life
 	p.color = get_random_colour() // Light gray for trail
-	p.size = 1.5 + f32(rand.int31() % 2)
+	//p.size = 1.5 + f32(rand.int31() % 2)
 	ps.active_count += 1
 }
 
@@ -176,7 +193,7 @@ update_particle_system :: proc(ps: ^Particle_System, delta_time: f32) {
 		p.color.a = u8(255 * life_factor)
 
 		// Shrink particle over time
-		p.size = (2.0 + f32(rand.int31() % 3)) * life_factor
+		//p.size = (2.0 + f32(rand.int31() % 3)) * life_factor
 
 		// Deactivate if life is over
 		if p.life <= 0 {
@@ -192,6 +209,6 @@ draw_particle_system :: proc(ps: ^Particle_System, fade: f32) {
 		if !ps.particles[i].active do continue
 
 		p := &ps.particles[i]
-		rl.DrawCircleV(p.position, p.size, p.color)
+		rl.DrawPixelV(p.position, p.color)
 	}
 }
