@@ -8,8 +8,8 @@ This template contains the following:
 I have also created the following:
 
 * Quadtree.odin - Flat array quadtree structure that is adapted to use Handles from the handle_map library
-
-
+* Chunk_converter.odin - Level serialization package that loads/unloads into JSON and Binary formats. 
+                  
 Modifications:
 
 - build_hot_reload.bat - Added in Atlas-Map build line to allow user to hot-reload and generate new atlas. 

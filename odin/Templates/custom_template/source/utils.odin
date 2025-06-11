@@ -71,12 +71,7 @@ get_width_of_longest_string_in_menu :: proc(menu: ^Menu, spacing: f32) -> f32 {
 			if width < text_size_vec.x {
 				width = text_size_vec.x
 			}
-		} else {
-			//todo: calculate the width including 
-			//menu options/values
-			fmt.printf("TODO - CALC MENU WIDTH WITH OPTIONS\n")
 		}
-
 	}
 	return width
 }

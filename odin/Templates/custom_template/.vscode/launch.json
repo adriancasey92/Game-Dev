@@ -1,7 +1,6 @@
 {
     "version": "0.2.0",
     "configurations": [
-        // Windows configs (only difference from linux/mac is "type" and "program")
         {
             "type": "cppvsdbg",
             "request": "launch",
@@ -9,7 +8,7 @@
             "name": "Run Hot Reload (Windows)",
             "args": [],
             "cwd": "${workspaceFolder}",
-            "program": "${workspaceFolder}/game_hot_reload.exe",
+            "program": "${workspaceFolder}/game_hot_reload.exe"
         },
         {
             "type": "cppvsdbg",
@@ -29,8 +28,6 @@
             "args": [],
             "cwd": "${workspaceFolder}"
         },
-        
-        // Linux / Mac configs
         {
             "type": "lldb",
             "request": "launch",
@@ -38,7 +35,7 @@
             "name": "Run Hot Reload (Linux / Mac)",
             "args": [],
             "cwd": "${workspaceFolder}",
-            "program": "${workspaceFolder}/game_hot_reload.bin",
+            "program": "${workspaceFolder}/game_hot_reload.bin"
         },
         {
             "type": "lldb",
@@ -47,7 +44,7 @@
             "name": "Run Debug (Linux / Mac)",
             "args": [],
             "cwd": "${workspaceFolder}",
-            "program": "${workspaceFolder}/build/debug/game_debug.bin",
+            "program": "${workspaceFolder}/build/debug/game_debug.bin"
         },
         {
             "type": "lldb",
@@ -56,7 +53,7 @@
             "name": "Run Release (Linux / Mac)",
             "args": [],
             "cwd": "${workspaceFolder}",
-            "program": "${workspaceFolder}/build/release/game_release.bin",
-        },
+            "program": "${workspaceFolder}/build/release/game_release.bin"
+        }
     ]
 }

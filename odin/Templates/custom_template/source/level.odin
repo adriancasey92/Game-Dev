@@ -1,9 +1,16 @@
 package game
 
+import rl "vendor:raylib"
 import "core:fmt"
 import "core:math"
 import "core:time"
-import rl "vendor:raylib"
+import "core:bytes"
+import "core:encoding/json"
+import "core:os"
+
+// Binary file format constants
+COLLISION_CHUNK_VERSION :: 1
+VISUAL_CHUNK_VERSION :: 1
 
 Level :: struct {
 	//always loaded
@@ -37,14 +44,12 @@ ChunkCoord :: struct {
 	x, y: i32,
 }
 
-//Not used yet...
 Decoration :: struct {
 	pos:    Vec2,
-	sprite: Texture_Name,
+	sprite: Sprite_ID,
 	layer:  i32,
 }
 
-//Example types
 Tile_Type :: enum u8 {
 	EMPTY    = 0,
 	SOLID    = 1,
@@ -53,13 +58,11 @@ Tile_Type :: enum u8 {
 	LADDER   = 4,
 }
 
-
-//We will match these ID's to our Texture_Names later
-Tile_ID :: enum u32 {
-	NONE       = 0,
-	GRASS_TILE = 1,
-	STONE_TILE = 2,
-	SPIKE      = 3,
+Sprite_ID :: enum u32 {
+	NONE         = 0,
+	GRASS_TILE   = 1,
+	STONE_TILE   = 2,
+	SPIKE_SPRITE = 3,
 }
 
 // Chunk structures
@@ -69,7 +72,9 @@ Collision_Chunk :: struct {
 }
 
 Visual_Chunk :: struct {
-	sprites:          [CHUNK_SIZE][CHUNK_SIZE]Tile_ID,
+	coord_x: i32,
+	coord_y: i32,
+	sprites:          [CHUNK_SIZE][CHUNK_SIZE]Sprite_ID,
 	entities:         [dynamic]Entity,
 	decorations:      [dynamic]Decoration,
 	last_access_time: f64,
@@ -84,94 +89,33 @@ Level_Chunk :: struct {
 	platforms:  []Platform,
 }
 
-init_level_old :: proc(level_num: int) {
-	fmt.printf("Initializing level %i\n", level_num)
-	// Load level from file
-	/*p := Platform {
-		pos          = centered_pos_from_offset({0, 0}, {96, 16}),
-		size_vec2    = {96, 16},
-		rotation     = 0,
-		texture_rect = atlas_textures[.Platform_Large].rect,
-		exists       = true,
-		index        = 0,
-	}
-
-	p.pos_rect = pos_to_rect(p.pos, p.size_vec2)
-	p.corners = get_rect_corners(p.pos_rect)
-	p.faces = get_rect_faces(p.pos_rect)
-
-	level.platforms[0] = p
-	//append(&level.platforms, p)
-
-	p = {
-		pos          = centered_pos_from_offset({0, 250}, {64, 16}),
-		size_vec2    = {64, 16},
-		rotation     = 0,
-		texture_rect = atlas_textures[.Platform_Medium].rect,
-		exists       = true,
-		index        = 1,
-	}
-	p.pos_rect = pos_to_rect(p.pos, p.size_vec2)
-	p.corners = get_rect_corners(p.pos_rect)
-	p.faces = get_rect_faces(p.pos_rect)
-	level.platforms[1] = p
-	//append(&level.platforms, p)
-
-	/*&if level_data, ok := os.read_entire_file("assets/level.json", context.temp_allocator); ok {
-		if json.unmarshal(level_data, &level) != nil {
-			append(
-				&level.platforms,
-				Platform {
-					pos = {-20, 20},
-					size = {96, 16},
-					texture_rect = atlas_textures[.Platform_Large].rect,
-				},
-			)
-			append(
-				&level.platforms,
-				Platform {
-					pos = {90, -20},
-					size = {64, 16},
-					texture_rect = atlas_textures[.Platform_Medium].rect,
-				},
-			)
-		}
-	} else {
-		fmt.printf("Failed to load level data\n")
-		return
-	}*/
-
-
-	//Set up edit screen with -1 as selection index
-	/*level.edit_screen = {Menu{}, -1}
-	append(
-		&level.edit_screen.menu.nodes,
-		Edit_Platforms {
-			rect = atlas_textures[.Platform_Small].rect,
-			size = {16, 32},
-			pos = {0, 0},
-			mouseOver = false,
-		},
-	)
-	append(
-		&level.edit_screen.menu.nodes,
-		Edit_Platforms {
-			rect = atlas_textures[.Platform_Medium].rect,
-			size = {16, 32},
-			pos = {0, 0},
-			mouseOver = false,
-		},
-	)
-	append(
-		&level.edit_screen.menu.nodes,
-		Edit_Platforms {
-			rect = atlas_textures[.Platform_Large].rect,
-			size = {16, 32},
-			pos = {0, 0},
-			mouseOver = false,
-		},
-	)*/*/
+// JSON structures for serialization
+JSON_Collision_Chunk :: struct {
+	chunk_x: i32,
+	chunk_y: i32,
+	tiles:   [CHUNK_SIZE][CHUNK_SIZE]u8, // Store as numbers for JSON
 }
+
+JSON_Entity :: struct {
+	pos:       [2]f32,
+	vel:       [2]f32,
+	sprite:u32,
+}
+
+JSON_Decoration :: struct {
+	pos: [2]f32,
+	sprite:   u32,
+	layer:    i32,
+}
+
+JSON_Visual_Chunk :: struct {
+	coord_x:     i32,
+	coord_y:     i32,
+	sprites:     [CHUNK_SIZE][CHUNK_SIZE]u32,
+	entities:    []JSON_Entity,
+	decorations: []JSON_Decoration,
+}
+
 
 init_level :: proc(level: ^Level) {
 	level.collision_map = make(map[ChunkCoord]Collision_Chunk)
@@ -403,14 +347,6 @@ update_chunks :: proc(game_memory: ^Game_Memory) {
 	unload_distant_visual_chunks(level, level.player_chunk, current_time)
 }
 
-import "core:bytes"
-import "core:encoding/json"
-import "core:os"
-
-// Binary file format constants
-COLLISION_CHUNK_VERSION :: 1
-VISUAL_CHUNK_VERSION :: 1
-
 // File paths
 get_collision_chunk_path :: proc(coord: ChunkCoord) -> string {
 	return fmt.aprintf("data/chunks/collision/chunk_%d_%d.dat", coord.x, coord.y)
@@ -419,9 +355,6 @@ get_collision_chunk_path :: proc(coord: ChunkCoord) -> string {
 get_visual_chunk_path :: proc(coord: ChunkCoord) -> string {
 	return fmt.aprintf("data/chunks/visual/chunk_%d_%d.dat", coord.x, coord.y)
 }
-
-// BINARY APPROACH (Recommended for performance)
-// ============================================
 
 // Binary collision chunk format:
 // [4 bytes: version] [4 bytes: chunk_x] [4 bytes: chunk_y] [1024 bytes: tile data]
@@ -473,38 +406,6 @@ load_collision_chunk_from_disk :: proc(coord: ChunkCoord) -> Collision_Chunk {
 	chunk.has_data = true
 	fmt.printf("Loaded collision chunk (%d, %d) from binary file\n", coord.x, coord.y)
 	return chunk
-}
-
-// JSON APPROACH (Alternative - easier to debug but slower)
-// =======================================================
-
-// JSON structures for serialization
-JSON_Collision_Chunk :: struct {
-	version: int,
-	chunk_x: i32,
-	chunk_y: i32,
-	tiles:   [CHUNK_SIZE][CHUNK_SIZE]u8, // Store as numbers for JSON
-}
-
-JSON_Entity :: struct {
-	position:       [2]f32,
-	velocity:       [2]f32,
-	animation_name: Animation_Name,
-}
-
-JSON_Decoration :: struct {
-	position: [2]f32,
-	sprite:   u32,
-	layer:    i32,
-}
-
-JSON_Visual_Chunk :: struct {
-	version:     int,
-	chunk_x:     i32,
-	chunk_y:     i32,
-	sprites:     [CHUNK_SIZE][CHUNK_SIZE]u32,
-	entities:    []JSON_Entity,
-	decorations: []JSON_Decoration,
 }
 
 // JSON file paths
@@ -582,26 +483,33 @@ load_visual_chunk_from_json :: proc(coord: ChunkCoord) -> Visual_Chunk {
 		fmt.printf("Failed to parse visual chunk JSON: %s, error: %v\n", filepath, parse_error)
 		return generate_default_visual_chunk(coord)
 	}
-
+	fmt.printf("Successfully parsed json_visual_chunk: %v\n",filepath)
+	
 	// Verify coordinates
-	if json_chunk.chunk_x != coord.x || json_chunk.chunk_y != coord.y {
+	if json_chunk.coord_x != coord.x || json_chunk.coord_y != coord.y {
 		fmt.printf("Visual chunk coordinate mismatch in JSON: %s\n", filepath)
 		return generate_default_visual_chunk(coord)
 	}
 
+	chunk.coord_x=json_chunk.coord_x
+	chunk.coord_y=json_chunk.coord_y
+
 	// Convert sprite data
 	for y in 0 ..< CHUNK_SIZE {
 		for x in 0 ..< CHUNK_SIZE {
-			chunk.sprites[y][x] = cast(Tile_ID)json_chunk.sprites[y][x]
+			chunk.sprites[y][x] = cast(Sprite_ID)json_chunk.sprites[y][x]
 		}
 	}
 
 	// Convert entities
 	for json_entity in json_chunk.entities {
+
+		//create entity based off
 		entity := Entity {
-			pos  = json_entity.position,
-			vel  = json_entity.velocity,
-			kind = cast(EntityKind)json_entity.animation_name,
+			pos  = json_entity.pos,
+			vel  = json_entity.vel,
+			//sprite = json_entity.sprite
+			//kind = cast(EntityKind)json_entity.kind,
 		}
 		append(&chunk.entities, entity)
 	}
@@ -609,8 +517,8 @@ load_visual_chunk_from_json :: proc(coord: ChunkCoord) -> Visual_Chunk {
 	// Convert decorations
 	for json_decoration in json_chunk.decorations {
 		decoration := Decoration {
-			pos   = json_decoration.position,
-			//sprite = cast(Sprite_ID)json_decoration.sprite,
+			pos   = json_decoration.pos,
+			sprite = cast(Sprite_ID)json_decoration.sprite,
 			layer = json_decoration.layer,
 		}
 		append(&chunk.decorations, decoration)
@@ -629,7 +537,7 @@ save_collision_chunk_to_json :: proc(coord: ChunkCoord, chunk: Collision_Chunk) 
 
 	// Convert to JSON structure
 	json_chunk := JSON_Collision_Chunk {
-		version = COLLISION_CHUNK_VERSION,
+		//version = COLLISION_CHUNK_VERSION,
 		chunk_x = coord.x,
 		chunk_y = coord.y,
 	}
@@ -666,9 +574,8 @@ save_visual_chunk_to_json :: proc(coord: ChunkCoord, chunk: Visual_Chunk) {
 
 	// Convert to JSON structure
 	json_chunk := JSON_Visual_Chunk {
-		version     = VISUAL_CHUNK_VERSION,
-		chunk_x     = coord.x,
-		chunk_y     = coord.y,
+		coord_x     = coord.x,
+		coord_y     = coord.y,
 		entities    = make([]JSON_Entity, len(chunk.entities)),
 		decorations = make([]JSON_Decoration, len(chunk.decorations)),
 	}
@@ -685,8 +592,8 @@ save_visual_chunk_to_json :: proc(coord: ChunkCoord, chunk: Visual_Chunk) {
 	// Convert entities
 	for entity, i in chunk.entities {
 		json_chunk.entities[i] = JSON_Entity {
-			position = entity.pos,
-			velocity = entity.vel,
+			pos = entity.pos,
+			vel = entity.vel,
 			//animation_name = cast(u32)entity.sprite,
 		}
 	}
@@ -694,7 +601,7 @@ save_visual_chunk_to_json :: proc(coord: ChunkCoord, chunk: Visual_Chunk) {
 	// Convert decorations
 	for decoration, i in chunk.decorations {
 		json_chunk.decorations[i] = JSON_Decoration {
-			position = decoration.pos,
+			pos = decoration.pos,
 			sprite   = cast(u32)decoration.sprite,
 			layer    = decoration.layer,
 		}
@@ -754,7 +661,7 @@ load_visual_chunk_from_disk :: proc(coord: ChunkCoord) -> Visual_Chunk {
 	offset := 0
 
 	// Read header
-	version := (cast(^i32)&data[offset])^;offset += 4
+	//version := (cast(^i32)&data[offset])^;offset += 4
 	chunk_x := (cast(^i32)&data[offset])^;offset += 4
 	chunk_y := (cast(^i32)&data[offset])^;offset += 4
 
@@ -767,7 +674,7 @@ load_visual_chunk_from_disk :: proc(coord: ChunkCoord) -> Visual_Chunk {
 	// Read sprite data
 	for y in 0 ..< CHUNK_SIZE {
 		for x in 0 ..< CHUNK_SIZE {
-			chunk.sprites[y][x] = cast(Tile_ID)(cast(^u32)&data[offset])^
+			chunk.sprites[y][x] = cast(Sprite_ID)(cast(^u32)&data[offset])^
 			offset += 4
 		}
 	}
@@ -790,7 +697,7 @@ load_visual_chunk_from_disk :: proc(coord: ChunkCoord) -> Visual_Chunk {
 		decoration := Decoration{}
 		decoration.pos.x = (cast(^f32)&data[offset])^;offset += 4
 		decoration.pos.y = (cast(^f32)&data[offset])^;offset += 4
-		decoration.sprite = cast(Texture_Name)(cast(^u32)&data[offset])^;offset += 4
+		//decoration.sprite = cast(Texture_Name)(cast(^u32)&data[offset])^;offset += 4
 		decoration.layer = (cast(^i32)&data[offset])^;offset += 4
 		append(&chunk.decorations, decoration)
 	}
@@ -812,12 +719,13 @@ save_collision_chunk_to_disk :: proc(coord: ChunkCoord, chunk: Collision_Chunk) 
 	defer delete(data)
 
 	// Write header
-	(cast(^i32)&data[0])^ = COLLISION_CHUNK_VERSION
-	(cast(^i32)&data[4])^ = coord.x
-	(cast(^i32)&data[8])^ = coord.y
+	offset := 0
+	//(cast(^i32)&data[0])^ = COLLISION_CHUNK_VERSION
+	(cast(^i32)&data[offset])^ = coord.x;offset += 4
+	(cast(^i32)&data[offset])^ = coord.y;;offset += 4
 
 	// Write tile data
-	offset := 12
+	
 	for y in 0 ..< CHUNK_SIZE {
 		for x in 0 ..< CHUNK_SIZE {
 			data[offset] = cast(u8)chunk.tiles[y][x]
@@ -880,7 +788,7 @@ save_visual_chunk_to_disk :: proc(coord: ChunkCoord, chunk: Visual_Chunk) {
 	for decoration in chunk.decorations {
 		(cast(^f32)&data[offset])^ = decoration.pos.x;offset += 4
 		(cast(^f32)&data[offset])^ = decoration.pos.y;offset += 4
-		(cast(^u32)&data[offset])^ = cast(u32)decoration.sprite;offset += 4
+		//(cast(^u32)&data[offset])^ = cast(u32)decoration.sprite;offset += 4
 		(cast(^i32)&data[offset])^ = decoration.layer;offset += 4
 	}
 

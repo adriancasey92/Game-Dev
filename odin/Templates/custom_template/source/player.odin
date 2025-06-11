@@ -38,7 +38,7 @@ player_center :: proc() -> Vec2 {
 
 update_player :: proc(dt: f32) {
 	p := get_player()
-
+	p.is_on_ground=true
 	//For keeping our input value so we continue to move outwards when jumping from the edge of a platform
 	if !p.side_jump {p.input = {}} else {
 		p.side_jump_timer += dt
@@ -60,7 +60,7 @@ update_player :: proc(dt: f32) {
 	}
 
 	//old_pos := p.pos
-	if !p.is_on_ground {
+	/*if !p.is_on_ground {
 		p.air_time += dt
 		if p.air_time > .55 {
 			if p.movement != .falling {
@@ -68,7 +68,7 @@ update_player :: proc(dt: f32) {
 				p.anim = animation_create(.Frog_Fall)
 			}
 		}
-	} else {p.air_time = 0}
+	} else {p.air_time = 0}*/
 
 	p.pos += (p.vel * dt)
 
@@ -401,7 +401,7 @@ update_player :: proc(dt: f32) {
 	}*/
 
 	//if we have not collided with any platforms, we are not grounded
-	if !has_collided && !p.wall_climbing {
+	/*if !has_collided && !p.wall_climbing {
 		if p.movement != .jumping {
 			p.is_on_ground = false
 			//If player walked off a platform, we want to delay the falling animation
@@ -423,7 +423,7 @@ update_player :: proc(dt: f32) {
 				}
 			}
 		}
-	}
+	}*/
 
 	//corner collision and wall walking/climbing detection
 	/*for platform in level.platforms {

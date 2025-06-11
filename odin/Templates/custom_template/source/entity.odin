@@ -144,7 +144,7 @@ create_random_entity :: proc(kind: EntityKind, pos: Vec2) {
 	hm.add(
 		&g.entities,
 		Entity {
-			anim = animation_create(.Frog_Idle),
+			anim = animation_create(.Goblin_Idle),
 			pos = pos,
 			dir = .left,
 			vel = {0, 0},

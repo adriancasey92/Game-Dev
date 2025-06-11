@@ -6,7 +6,7 @@ odin run atlas_builder.odin -file
 echo "Building chunk_converter.exe..."
 odin build chunk_converter/chunk_converter.odin -file
 echo "Converting chunks!..."
-chunk_converter.exe convert-all -i data/chunks/json -o data/chunks/binary
+chunk_converter.exe convert-all -i data/chunks/ -o data/chunks/ -r
 
 set GAME_RUNNING=false
 :: OUT_DIR is for everything except the exe. The exe needs to stay in root
