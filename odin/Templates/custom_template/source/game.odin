@@ -29,9 +29,7 @@ package game
 
 import hm "../handle_map"
 import "core:fmt"
-import "core:math/rand"
 import "core:mem"
-import "core:strings"
 import rl "vendor:raylib"
 
 //Constants
@@ -122,6 +120,7 @@ Game_Memory :: struct {
 	state:             Game_State,
 	prev_state:        Game_State,
 	level:             Level,
+	level_num:         i32,
 	won:               bool,
 	game_camera:       rl.Camera2D,
 	settings_sound:    Sound_Settings,
@@ -205,14 +204,21 @@ init_window :: proc() {
 
 //Initialise everything to do with the game+systems here
 init :: proc() {
+
+	//game_memory
 	g = new(Game_Memory)
+
+	//Shaders
 	init_shaders()
+
+	//ATLAS
 	atlas_image := rl.LoadImageFromMemory(".png", raw_data(ATLAS_DATA), i32(len(ATLAS_DATA))) //load the raw data into atlas_image
+	defer (rl.UnloadImage(atlas_image))
+
+	//GUI
 	rl.GuiLoadStyle("../assets/guistyle/bluish.h")
-	//shader stuff
 	rl.GuiSetStyle(.DEFAULT, i32(rl.GuiDefaultProperty.TEXT_SIZE), MENU_FONT_SIZE)
-	// Set the shapes drawing texture, this makes rl.DrawRectangleRec etc use the atlas
-	rl.SetShapesTexture(atlas, SHAPES_TEXTURE_RECT)
+
 	g^ = Game_Memory {
 		state = .mainMenu,
 		atlas = rl.LoadTextureFromImage(atlas_image),
@@ -223,29 +229,15 @@ init :: proc() {
 			windowed = true,
 			fullscreen = false,
 		},
+		game_camera = {zoom = 1, offset = {0, 0}, rotation = 0},
 		//game_shader = Game_Shader{},
 	}
+	rl.SetShapesTexture(atlas, SHAPES_TEXTURE_RECT)
 
-	//init_shader()
-	//edit_tex = 0
-	//This automatically creates the player handle for g.player_handle
+	//This clears the handlemap and creates the player handle. 
 	reset_handles()
 
-	for i := 0; i < 50; i += 1 {
-		create_random_entity(
-			.goblin,
-			Vec2 {
-				rand.float32_range(0 - f32(WIDTH) / 2, 0 + f32(WIDTH) / 2),
-				rand.float32_range(0 - f32(HEIGHT) / 2, 0 + f32(HEIGHT) / 2),
-			},
-		)
-
-	}
-
-	//we no longer need this image as we have our atlas
-	rl.UnloadImage(atlas_image)
-
-	//Load fonts here
+	//fonts
 	num_glyphs := len(atlas_glyphs)
 	font_rects := make([]Rect, num_glyphs)
 	glyphs := make([]rl.GlyphInfo, num_glyphs)
@@ -270,12 +262,17 @@ init :: proc() {
 	// Set up current level
 	init_menu()
 	init_level(&g.level)
+
+	fmt.printf("Player Pos: %v\n", level.player_pos)
 	game_hot_reloaded(g)
 }
 
 // Main update loop
 // Handles input first, THEN updates entities accordingly. 
 update :: proc() {
+
+	update_camera()
+
 	if rl.IsKeyPressed(.LEFT_ALT) {
 		MODIFIER_KEY_DOWN = true
 	}
@@ -334,7 +331,8 @@ update :: proc() {
 update_play :: proc() {
 	dt = rl.GetFrameTime()
 	real_dt = dt
-	update_particle_system(&g.particle_system, dt)
+
+	update_level(&g.level, dt)
 
 	if rl.IsMouseButtonPressed(.LEFT) {
 		m_pos_world := rl.GetScreenToWorld2D(rl.GetMousePosition(), game_camera())
@@ -365,11 +363,11 @@ update_play :: proc() {
 		}
 	}
 
-	if CAMERA_ZOOM_MULT > 2 {
-		CAMERA_ZOOM_MULT = 2
+	if CAMERA_ZOOM_MULT > 1.5 {
+		CAMERA_ZOOM_MULT = 1.5
 	}
-	if CAMERA_ZOOM_MULT < 0.25 {
-		CAMERA_ZOOM_MULT = .25
+	if CAMERA_ZOOM_MULT < 0.5 {
+		CAMERA_ZOOM_MULT = .5
 	}
 
 	if rl.IsKeyPressed(.C) {
@@ -522,6 +520,19 @@ draw :: proc() {
 		MENU_SPACING,
 		rl.BLACK,
 	)
+
+	rl.DrawTextEx(
+		rl.GetFontDefault(),
+		rl.TextFormat(
+			"Camera Position: [%.2f,%.2f]",
+			g.game_camera.target.x,
+			g.game_camera.target.y,
+		),
+		{10, f32(rl.GetScreenHeight()) - 20},
+		font_size,
+		MENU_SPACING,
+		rl.BLACK,
+	)
 }
 
 draw_play :: proc(fade: f32) {
@@ -545,7 +556,7 @@ draw_play :: proc(fade: f32) {
 
 	//if DEBUG_DRAW {draw_player_debug()}
 	if DEBUG_DRAW {
-		for &item, h in g.entities.items {
+		for &item, _ in g.entities.items {
 			if hm.skip(item) {
 				// If you want to skip drawing this entity, you can continue here
 				continue
@@ -594,7 +605,7 @@ game_should_run :: proc() -> bool {
 			return false
 		}
 	}
-	return !g.run
+	return g.run
 }
 
 refresh_globals :: proc() {
@@ -602,6 +613,7 @@ refresh_globals :: proc() {
 	reload_global_data()
 	atlas = g.atlas
 	font = g.font
+	level = g.level
 	rl.GuiSetStyle(.DEFAULT, i32(rl.GuiDefaultProperty.TEXT_SIZE), MENU_FONT_SIZE)
 	//GLOB_player = hm.get(g.entities, g.player_handle)
 	//GLOB_player.anim = animation_create(.Frog_Move)
@@ -650,6 +662,15 @@ shutdown :: proc() {
 	//delete(level.platforms)
 	//free(&level.platforms)
 	//delete(level.edit_screen.menu.nodes)
+
+	delete(g.level.collision_map)
+	for coord in level.active_chunks {
+		delete(level.active_chunks[coord].entities)
+		delete(level.active_chunks[coord].decorations)
+	}
+	delete(g.level.active_chunks)
+
+
 	hm.delete(&g.entities)
 	mem.free(g.font.recs)
 	mem.free(g.font.glyphs)

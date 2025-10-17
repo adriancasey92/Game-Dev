@@ -2,17 +2,16 @@ package game
 
 import hm "../handle_map"
 import "core:fmt"
-import "core:math/linalg"
-import "core:math/rand"
 import rl "vendor:raylib"
 
-MAX_ENTITIES :: 50000
+MAX_ENTITIES :: 2500
 
 Entity_Handle :: distinct hm.Handle
 
 Entity :: struct {
 	handle:              Entity_Handle,
 	kind:                EntityKind,
+	sprite:              Sprite_ID,
 
 	// could pack these into flags if you feel like it (not really needed though)
 	/*has_physics:         bool,
@@ -163,6 +162,32 @@ create_random_entity :: proc(kind: EntityKind, pos: Vec2) {
 	)
 }
 
+create_entity :: proc(kind: EntityKind, pos: Vec2) -> Entity_Handle {
+	fmt.printf("Creating entity of kind %v at position %v\n", kind, pos)
+	fmt.printf("TODO - Switch for create_entity to split off entity creation\n")
+	handle := hm.add(
+		&g.entities,
+		Entity {
+			anim = animation_create(.Goblin_Idle),
+			pos = pos,
+			dir = .left,
+			vel = {0, 0},
+			size = {},
+			is_on_ground = true,
+			movement = .idle,
+			orientation = .norm,
+			flip_x = false,
+			flip_y = false,
+			feet_collider = Rect{},
+			face_collider = Rect{},
+			head_collider = Rect{},
+			corner_collider = Rect{},
+			kind = .goblin,
+		},
+	)
+	return handle
+}
+
 create_player_entity :: proc(pos: Vec2) {
 	fmt.printf("Creating player entity at position %v\n", pos)
 	g.player_handle = hm.add(
@@ -189,7 +214,7 @@ create_player_entity :: proc(pos: Vec2) {
 
 draw_entities :: proc(fade: f32) {
 	ENTITES_DRAWN = 0
-	iter := hm.make_iter(&g.entities)
+	//iter := hm.make_iter(&g.entities)
 	//     for e in hm.iter(&my_iter) {})
 	for &item in g.entities.items {
 		if hm.skip(item) {
@@ -213,9 +238,6 @@ draw_entity :: proc(e: Entity_Handle, fade: f32) {
 		fmt.printf("Entity handle %v is not valid, cannot draw it\n", e)
 		return
 	}
-	ent := hm.get(g.entities, e)
-
-
 	draw_entity_generic(e, fade)
 }
 
@@ -315,7 +337,7 @@ draw_entity_colliders :: proc(entity_handle: Entity_Handle) {
 }
 
 update_entities :: proc(dt: f32) {
-	iter := hm.make_iter(&g.entities)
+	//iter := hm.make_iter(&g.entities)
 	//     for e in hm.iter(&my_iter) {})
 	for &item in g.entities.items {
 		if hm.skip(item) {

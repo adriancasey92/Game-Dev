@@ -1,8 +1,6 @@
 package game
 
 import hm "../handle_map"
-import "core:fmt"
-import "core:strings"
 import rl "vendor:raylib"
 
 debug_title: cstring = "Debug Player Info"
@@ -21,7 +19,7 @@ debug_info_str: []cstring = {
 }
 
 debug_player_draw :: proc() {
-	p := get_player()
+	//p := get_player()
 	font_size := get_scaled_font_size()
 	spacing := f32(1)
 

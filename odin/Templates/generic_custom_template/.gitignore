@@ -1,0 +1,7 @@
+build/**
+project.sublime-workspace
+game_hot_reload.exe
+atlas_builder.exe
+game_hot_reload.bin
+raylib.dll
+linux/**

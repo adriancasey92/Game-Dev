@@ -38,7 +38,7 @@ player_center :: proc() -> Vec2 {
 
 update_player :: proc(dt: f32) {
 	p := get_player()
-	p.is_on_ground=true
+	p.is_on_ground = true
 	//For keeping our input value so we continue to move outwards when jumping from the edge of a platform
 	if !p.side_jump {p.input = {}} else {
 		p.side_jump_timer += dt
@@ -198,14 +198,14 @@ update_player :: proc(dt: f32) {
 
 	//Jumping
 	//We have a switch to determine the orientation so we can calculate the jump angle properly
-	if rl.IsKeyPressed(.SPACE) || rl.IsKeyDown(.W) {
+	if rl.IsKeyDown(.SPACE) || rl.IsKeyDown(.W) {
 		switch p.orientation 
 		{
 		case .norm:
 			if p.is_on_ground {
 				p.input.y = -1
-				p.vel.y = -150
-				p.is_on_ground = false
+				//p.vel.y = -150
+				//p.is_on_ground = false
 				p.movement = .jumping
 				p.last_movement = .jumping
 				p.anim = animation_create(.Frog_Jump)
@@ -315,7 +315,7 @@ update_player :: proc(dt: f32) {
 	//Check if player is grounded using colliders with platforms
 	//collider update - based on orientation
 	//rotate_player rotates all colliders etc.
-	has_collided := false
+	//has_collided := false
 	update_player_colliders()
 	if p.orientation != .norm {
 		rotate_player()

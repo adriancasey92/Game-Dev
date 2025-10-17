@@ -107,7 +107,7 @@ calc_menu_positions :: proc(menu: ^Menu) {
 	if menu.type == .settings {
 		settings = get_settings(menu)
 	}
-	for option, idx in menu.options {
+	for _, idx in menu.options {
 		//left side settings text
 		if menu.type == .settings {
 			menu.options_pos[idx] = {

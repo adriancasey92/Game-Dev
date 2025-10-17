@@ -19,14 +19,15 @@ file_names: [4]cstring = {
 }
 
 init_shaders :: proc() {
-	g.render_target = rl.LoadRenderTexture(rl.GetScreenWidth(), rl.GetScreenHeight())
+    fmt.printf("TODO - IMPLEMENT SHADERS\n")
+	/*g.render_target = rl.LoadRenderTexture(rl.GetScreenWidth(), rl.GetScreenHeight())
 	for i := 0; i < len(file_names); i += 1 {
 		if !file_exists(string(file_names[i])) {
 			fmt.printf("Shader file not found: %s\n", file_names[i])
 			fmt.println("Creating default shader files...")
 			create_shader_files()
 		}
-	}
+	}*/
 }
 
 create_shader_files :: proc() {

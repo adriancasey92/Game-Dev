@@ -1,12 +1,12 @@
 package game
 
-import rl "vendor:raylib"
+import hm "../handle_map"
+import "base:runtime"
+import "core:encoding/json"
 import "core:fmt"
 import "core:math"
-import "core:time"
-import "core:bytes"
-import "core:encoding/json"
 import "core:os"
+import rl "vendor:raylib"
 
 // Binary file format constants
 COLLISION_CHUNK_VERSION :: 1
@@ -21,11 +21,9 @@ Level :: struct {
 	world_bounds:          struct {
 		min_chunk, max_chunk: ChunkCoord,
 	},
-
 	//player tracking
 	player_chunk:          ChunkCoord,
 	player_pos:            Vec2,
-
 	//performance tracking
 	last_chunk_update:     f64,
 	chunk_update_interval: f64,
@@ -33,12 +31,12 @@ Level :: struct {
 
 //Uses json for development and binary on release
 USE_BINARY_FORMAT :: #config(RELEASE, false) // Binary in release, JSON in debug
-
 CHUNK_SIZE :: 32
 TILE_SIZE :: 16
+TOTAL_CHUNK_PIXELS :: CHUNK_SIZE * TILE_SIZE
 CHUNKS_ABOVE :: 2
 CHUNKS_BELOW :: 3
-VISUAL_UNLOAD_DISTANCE_IN_CHUNKS :: 5
+VISUAL_UNLOAD_DISTANCE_IN_CHUNKS :: 2
 
 ChunkCoord :: struct {
 	x, y: i32,
@@ -72,10 +70,10 @@ Collision_Chunk :: struct {
 }
 
 Visual_Chunk :: struct {
-	coord_x: i32,
-	coord_y: i32,
+	coord_x:          i32,
+	coord_y:          i32,
 	sprites:          [CHUNK_SIZE][CHUNK_SIZE]Sprite_ID,
-	entities:         [dynamic]Entity,
+	entities:         [dynamic]Entity_Handle,
 	decorations:      [dynamic]Decoration,
 	last_access_time: f64,
 	is_dirty:         bool, // Needs to be saved
@@ -97,15 +95,14 @@ JSON_Collision_Chunk :: struct {
 }
 
 JSON_Entity :: struct {
-	pos:       [2]f32,
-	vel:       [2]f32,
-	sprite:u32,
+	pos:  [2]f32,
+	kind: EntityKind,
 }
 
 JSON_Decoration :: struct {
-	pos: [2]f32,
-	sprite:   u32,
-	layer:    i32,
+	pos:    [2]f32,
+	sprite: u32,
+	layer:  i32,
 }
 
 JSON_Visual_Chunk :: struct {
@@ -116,120 +113,86 @@ JSON_Visual_Chunk :: struct {
 	decorations: []JSON_Decoration,
 }
 
-
+//initializes levels
 init_level :: proc(level: ^Level) {
+	fmt.printf("Init_level\n")
+	current_level := g.level_num
 	level.collision_map = make(map[ChunkCoord]Collision_Chunk)
 	level.active_chunks = make(map[ChunkCoord]Visual_Chunk)
 	level.chunk_update_interval = 0.1 // Update chunks 10 times per second
-
 	// Set world bounds (example: 1 chunk wide, 20 chunks tall)
 	level.world_bounds.min_chunk = {0, 0}
 	level.world_bounds.max_chunk = {0, 19}
+	for y := 0; y < int(level.world_bounds.max_chunk.y); y += 1 {
+		level.collision_map[ChunkCoord{0, i32(y)}] = load_collision_chunk({0, i32(y)})
+	}
+	//start player at ground level 0,0
+	level.player_chunk = ChunkCoord{0, 0}
+	level.player_pos = {0, 0}
+	for i := 0; i < int(level.player_chunk.y) + CHUNKS_ABOVE; i += 1 {
+		c := ChunkCoord{0, i32(i)}
+		load_visual_chunk(&g.level, c, rl.GetTime())
+	}
 }
 
 //Fade draws the level with a fade
 draw_level :: proc(fade: f32) {
-	/*// Draw platforms
-	for p, idx in level.platforms {
-		if p.exists {
-			rl.DrawTextureRec(g.atlas, p.texture_rect, p.pos, rl.Fade(rl.WHITE, fade))
-			if DEBUG_DRAW {
-				rl.DrawRectangleLinesEx(p.pos_rect, 1, rl.Fade(rl.RED, fade))
-				//text position
-				text := rl.TextFormat("%.2f, %.2f", p.pos.x, p.pos.y)
-				//text_size := rl.MeasureTextEx(rl.GetFontDefault(), text, 5, 2)
-
-				draw_text_centered(
-					text,
-					i32(p.pos.x + p.pos_rect.width / 2),
-					i32(p.pos.y + p.pos_rect.height / 2),
-					5,
-					rl.Fade(rl.RED, fade),
-				)
-				/*rl.DrawTextEx(
-				rl.GetFontDefault(),
-				text,
-				{
-					p.pos.x + (p.size_vec2.x / 2) - (text_size.x / 2),
-					p.pos.y + (p.size_vec2.y / 2) - (text_size.y / 2),
-				},
-				5,
-				2,
-				rl.Fade(rl.RED, fade),
-			)*/
-			}
-			if DEBUG_DRAW_COLLIDERS {
-				for c, c_idx in p.corners {
-					rl.DrawRectangleLinesEx(c, 1, rl.YELLOW)
-					draw_text_centered(
-						rl.TextFormat("%i,%i", idx, c_idx),
-						i32(c.x),
-						i32(c.y),
-						4,
-						rl.BLACK,
-					)
-				}
-				for f in p.faces {
-					rl.DrawRectangleLinesEx(f, 1, rl.PURPLE)
-				}
-			}
-		}
-	}*/
+	//fmt.printf("Level.active_chunks size: %i\n", len(level.active_chunks))
+	for coord in level.active_chunks {
+		chunk := level.active_chunks[coord]
+		draw_visual_chunk(coord, chunk, game_camera())
+	}
 }
 
 load_collision_chunk :: proc(coord: ChunkCoord) -> Collision_Chunk {
 	when USE_BINARY_FORMAT {
+		fmt.printf("Loading collision chunk BINARY %v\n", coord)
 		return load_collision_chunk_from_binary(coord)
+
 	} else {
+		fmt.printf("Loading collision chunk JSON %v\n", coord)
 		return load_collision_chunk_from_json(coord)
 	}
 }
 
-// Coordinate conversion utilities
 world_pos_to_chunk :: proc(world_pos: [2]f32) -> ChunkCoord {
 	chunk_size_world := f32(CHUNK_SIZE * TILE_SIZE)
 	return {
 		i32(math.floor(world_pos.x / chunk_size_world)),
-		i32(math.floor(world_pos.y / chunk_size_world)),
+		i32(math.floor(world_pos.y / chunk_size_world)), // Y increases downward
 	}
 }
 
 chunk_to_world_pos :: proc(chunk: ChunkCoord) -> [2]f32 {
 	chunk_size_world := f32(CHUNK_SIZE * TILE_SIZE)
-	return {f32(chunk.x) * chunk_size_world, f32(chunk.y) * chunk_size_world}
+	return {
+		f32(chunk.x) * chunk_size_world,
+		f32(chunk.y) * -chunk_size_world, // Keep Y increasing downward
+	}
 }
 
-//for collision 
 get_tile_in_world :: proc(level: ^Level, world_pos: [2]f32) -> Tile_Type {
 	chunk_coord := world_pos_to_chunk(world_pos)
-
 	// Check if collision chunk exists
 	collision_chunk, chunk_exists := &level.collision_map[chunk_coord]
 	if !chunk_exists || !collision_chunk.has_data {
 		return .EMPTY
 	}
-
 	// Convert to local tile coordinates within chunk
 	chunk_world_pos := chunk_to_world_pos(chunk_coord)
 	local_pos := world_pos - chunk_world_pos
-
 	tile_x := i32(local_pos.x / TILE_SIZE)
 	tile_y := i32(local_pos.y / TILE_SIZE)
-
 	// Bounds check
 	if tile_x < 0 || tile_x >= CHUNK_SIZE || tile_y < 0 || tile_y >= CHUNK_SIZE {
 		return .EMPTY
 	}
-
 	return collision_chunk.tiles[tile_y][tile_x]
 }
 
 // Collision chunk management
 ensure_collision_chunk_loaded :: proc(level: ^Level, coord: ChunkCoord) {
-	if coord in level.collision_map {
-		return
-	}
-
+	if coord in level.collision_map {return}
 	// Check bounds
 	if coord.x < level.world_bounds.min_chunk.x ||
 	   coord.x > level.world_bounds.max_chunk.x ||
@@ -237,11 +200,8 @@ ensure_collision_chunk_loaded :: proc(level: ^Level, coord: ChunkCoord) {
 	   coord.y > level.world_bounds.max_chunk.y {
 		return
 	}
-
-	// Load collision data (you'd replace this with actual file loading)
-	chunk := load_collision_chunk_from_disk(coord)
+	chunk := load_collision_chunk_binary(coord)
 	level.collision_map[coord] = chunk
-
 	fmt.printf("Loaded collision chunk (%d, %d)\n", coord.x, coord.y)
 }
 
@@ -251,42 +211,40 @@ load_visual_chunk :: proc(level: ^Level, coord: ChunkCoord, current_time: f64) {
 		// Update access time
 		chunk := &level.active_chunks[coord]
 		chunk.last_access_time = current_time
+		fmt.printf("Visual chunk (%d, %d) already loaded\n", coord.x, coord.y)
 		return
 	}
-
 	// Check bounds
 	if coord.x < level.world_bounds.min_chunk.x ||
 	   coord.x > level.world_bounds.max_chunk.x ||
 	   coord.y < level.world_bounds.min_chunk.y ||
 	   coord.y > level.world_bounds.max_chunk.y {
+		// Out of bounds
+		fmt.printf("Visual chunk (%d, %d) out of bounds, not loading\n", coord.x, coord.y)
 		return
 	}
 
+	fmt.printf("Trying to load visual chunk (%d, %d)\n", coord.x, coord.y)
 	// Load visual data
-	visual_chunk := load_visual_chunk_from_disk(coord)
+	visual_chunk := load_visual_chunk_binary(coord)
 	visual_chunk.last_access_time = current_time
 	level.active_chunks[coord] = visual_chunk
-
 	fmt.printf("Loaded visual chunk (%d, %d)\n", coord.x, coord.y)
 }
 
 unload_distant_visual_chunks :: proc(level: ^Level, player_chunk: ChunkCoord, current_time: f64) {
 	chunks_to_remove := make([dynamic]ChunkCoord, context.temp_allocator)
-
 	for coord, chunk in level.active_chunks {
 		// Calculate Manhattan distance
 		distance := abs(coord.x - player_chunk.x) + abs(coord.y - player_chunk.y)
-
 		if distance > VISUAL_UNLOAD_DISTANCE_IN_CHUNKS {
 			// Save chunk if dirty before unloading
 			if chunk.is_dirty {
 				save_visual_chunk_to_disk(coord, chunk)
 			}
-
 			append(&chunks_to_remove, coord)
 		}
 	}
-
 	// Remove distant chunks
 	for coord in chunks_to_remove {
 		delete_key(&level.active_chunks, coord)
@@ -298,16 +256,11 @@ unload_distant_visual_chunks :: proc(level: ^Level, player_chunk: ChunkCoord, cu
 update_chunks :: proc(game_memory: ^Game_Memory) {
 	level := &game_memory.level
 	current_time := game_memory.current_time
-
 	// Skip update if not enough time has passed
-	if current_time - level.last_chunk_update < level.chunk_update_interval {
-		return
-	}
+	if current_time - level.last_chunk_update < level.chunk_update_interval {return}
 	level.last_chunk_update = current_time
-
 	// Update player chunk
 	level.player_chunk = world_pos_to_chunk(level.player_pos)
-
 	// Ensure collision chunks are loaded in a radius around player
 	for dy in -CHUNKS_BELOW ..< CHUNKS_ABOVE {
 		for dx in -1 ..< 1 { 	// Assuming narrow vertical levels
@@ -318,7 +271,6 @@ update_chunks :: proc(game_memory: ^Game_Memory) {
 			ensure_collision_chunk_loaded(level, chunk_coord)
 		}
 	}
-
 	// Load visual chunks near player
 	for dy in -2 ..< 2 {
 		for dx in -1 ..< 1 {
@@ -329,44 +281,37 @@ update_chunks :: proc(game_memory: ^Game_Memory) {
 			load_visual_chunk(level, chunk_coord, current_time)
 		}
 	}
-
-	// Handle fast falling - predictive loading
 	player := get_player()
 	player_velocity_y := player.vel.y
-	if player_velocity_y > 500.0 { 	// Falling fast (positive y = down)
+	if player_velocity_y > 500.0 {
 		predicted_chunks := i32(abs(player_velocity_y) / f32(CHUNK_SIZE * TILE_SIZE))
-
 		for i in i32(1) ..< predicted_chunks {
 			chunk_coord := ChunkCoord{level.player_chunk.x, level.player_chunk.y - i}
 			ensure_collision_chunk_loaded(level, chunk_coord)
 			load_visual_chunk(level, chunk_coord, current_time)
 		}
 	}
-
-	//Unload distant visual chunks
 	unload_distant_visual_chunks(level, level.player_chunk, current_time)
 }
 
 // File paths
 get_collision_chunk_path :: proc(coord: ChunkCoord) -> string {
-	return fmt.aprintf("data/chunks/collision/chunk_%d_%d.dat", coord.x, coord.y)
+	return fmt.aprintf("data/chunks/binary/collision/chunk_%d_%d.dat", coord.x, coord.y)
 }
 
 get_visual_chunk_path :: proc(coord: ChunkCoord) -> string {
-	return fmt.aprintf("data/chunks/visual/chunk_%d_%d.dat", coord.x, coord.y)
+	return fmt.aprintf("data/chunks/binary/visual/chunk_%d_%d.dat", coord.x, coord.y)
 }
 
 // Binary collision chunk format:
-// [4 bytes: version] [4 bytes: chunk_x] [4 bytes: chunk_y] [1024 bytes: tile data]
-load_collision_chunk_from_disk :: proc(coord: ChunkCoord) -> Collision_Chunk {
+// [4 bytes: chunk_x] [4 bytes: chunk_y] [1024 bytes: tile data]
+load_collision_chunk_binary :: proc(coord: ChunkCoord) -> Collision_Chunk {
 	chunk := Collision_Chunk {
 		has_data = false,
 	}
-
 	filepath := get_collision_chunk_path(coord)
 	defer delete(filepath)
 
-	// Try to read binary file
 	data, read_ok := os.read_entire_file(filepath)
 	if !read_ok {
 		fmt.printf("Could not read collision chunk file: %s\n", filepath)
@@ -374,28 +319,19 @@ load_collision_chunk_from_disk :: proc(coord: ChunkCoord) -> Collision_Chunk {
 	}
 	defer delete(data)
 
-	if len(data) < 12 + CHUNK_SIZE * CHUNK_SIZE {
-		fmt.printf("Invalid collision chunk file size: %s\n", filepath)
-		return generate_default_collision_chunk(coord)
-	}
-
-	// Read header
-	reader := bytes.Reader {
-		s = data,
-	}
-
-	version := (cast(^i32)&data[0])^
-	chunk_x := (cast(^i32)&data[4])^
-	chunk_y := (cast(^i32)&data[8])^
-
+	//start reading data
+	offset := 0
+	chunk_x := (cast(^i32)&data[offset])^;offset += 4
+	chunk_y := (cast(^i32)&data[offset])^;offset += 4
 	// Verify chunk coordinates match
 	if chunk_x != coord.x || chunk_y != coord.y {
 		fmt.printf("Chunk coordinate mismatch in file: %s\n", filepath)
-		return generate_default_collision_chunk(coord)
+		return chunk
+		//return generate_default_collision_chunk(coord)
 	}
 
 	// Copy tile data directly
-	tile_data_start := 12
+	tile_data_start := 8
 	for y in 0 ..< CHUNK_SIZE {
 		for x in 0 ..< CHUNK_SIZE {
 			idx := tile_data_start + y * CHUNK_SIZE + x
@@ -410,15 +346,16 @@ load_collision_chunk_from_disk :: proc(coord: ChunkCoord) -> Collision_Chunk {
 
 // JSON file paths
 get_collision_chunk_json_path :: proc(coord: ChunkCoord) -> string {
-	return fmt.aprintf("data/chunks/collision/chunk_%d_%d.json", coord.x, coord.y)
+	return fmt.aprintf("data/chunks/json/collision/chunk_%d_%d.json", coord.x, coord.y)
 }
 
 get_visual_chunk_json_path :: proc(coord: ChunkCoord) -> string {
-	return fmt.aprintf("data/chunks/visual/chunk_%d_%d.json", coord.x, coord.y)
+	return fmt.aprintf("data/chunks/json/visual/chunk_%d_%d.json", coord.x, coord.y)
 }
 
 // JSON loading functions (use these instead of binary if you prefer JSON)
 load_collision_chunk_from_json :: proc(coord: ChunkCoord) -> Collision_Chunk {
+	f_name := "load_collision_chunk_from_json::(coord:ChunkCoord)->Collision_Chunk : "
 	chunk := Collision_Chunk {
 		has_data = false,
 	}
@@ -428,7 +365,7 @@ load_collision_chunk_from_json :: proc(coord: ChunkCoord) -> Collision_Chunk {
 
 	data, read_ok := os.read_entire_file(filepath)
 	if !read_ok {
-		fmt.printf("Could not read collision chunk JSON: %s\n", filepath)
+		fmt.printf("%s Could not read collision chunk JSON: %s\n", f_name, filepath)
 		return generate_default_collision_chunk(coord)
 	}
 	defer delete(data)
@@ -456,12 +393,15 @@ load_collision_chunk_from_json :: proc(coord: ChunkCoord) -> Collision_Chunk {
 
 	chunk.has_data = true
 	fmt.printf("Loaded collision chunk (%d, %d) from JSON\n", coord.x, coord.y)
+
+	fmt.printf("Chunk data: %v\n", chunk)
+
 	return chunk
 }
 
 load_visual_chunk_from_json :: proc(coord: ChunkCoord) -> Visual_Chunk {
 	chunk := Visual_Chunk {
-		entities    = make([dynamic]Entity),
+		entities    = make([dynamic]Entity_Handle),
 		decorations = make([dynamic]Decoration),
 		is_dirty    = false,
 	}
@@ -483,16 +423,16 @@ load_visual_chunk_from_json :: proc(coord: ChunkCoord) -> Visual_Chunk {
 		fmt.printf("Failed to parse visual chunk JSON: %s, error: %v\n", filepath, parse_error)
 		return generate_default_visual_chunk(coord)
 	}
-	fmt.printf("Successfully parsed json_visual_chunk: %v\n",filepath)
-	
+	fmt.printf("Successfully parsed json_visual_chunk: %v\n", filepath)
+
 	// Verify coordinates
 	if json_chunk.coord_x != coord.x || json_chunk.coord_y != coord.y {
 		fmt.printf("Visual chunk coordinate mismatch in JSON: %s\n", filepath)
 		return generate_default_visual_chunk(coord)
 	}
 
-	chunk.coord_x=json_chunk.coord_x
-	chunk.coord_y=json_chunk.coord_y
+	chunk.coord_x = json_chunk.coord_x
+	chunk.coord_y = json_chunk.coord_y
 
 	// Convert sprite data
 	for y in 0 ..< CHUNK_SIZE {
@@ -503,23 +443,17 @@ load_visual_chunk_from_json :: proc(coord: ChunkCoord) -> Visual_Chunk {
 
 	// Convert entities
 	for json_entity in json_chunk.entities {
-
-		//create entity based off
-		entity := Entity {
-			pos  = json_entity.pos,
-			vel  = json_entity.vel,
-			//sprite = json_entity.sprite
-			//kind = cast(EntityKind)json_entity.kind,
-		}
+		//create entity_handle 
+		entity := hm.add(&g.entities, Entity{pos = json_entity.pos, kind = json_entity.kind})
 		append(&chunk.entities, entity)
 	}
 
 	// Convert decorations
 	for json_decoration in json_chunk.decorations {
 		decoration := Decoration {
-			pos   = json_decoration.pos,
+			pos    = json_decoration.pos,
 			sprite = cast(Sprite_ID)json_decoration.sprite,
-			layer = json_decoration.layer,
+			layer  = json_decoration.layer,
 		}
 		append(&chunk.decorations, decoration)
 	}
@@ -591,19 +525,19 @@ save_visual_chunk_to_json :: proc(coord: ChunkCoord, chunk: Visual_Chunk) {
 
 	// Convert entities
 	for entity, i in chunk.entities {
+		e := hm.get(g.entities, entity)
 		json_chunk.entities[i] = JSON_Entity {
-			pos = entity.pos,
-			vel = entity.vel,
-			//animation_name = cast(u32)entity.sprite,
+			pos  = e.pos,
+			kind = e.kind,
 		}
 	}
 
 	// Convert decorations
 	for decoration, i in chunk.decorations {
 		json_chunk.decorations[i] = JSON_Decoration {
-			pos = decoration.pos,
-			sprite   = cast(u32)decoration.sprite,
-			layer    = decoration.layer,
+			pos    = decoration.pos,
+			sprite = cast(u32)decoration.sprite,
+			layer  = decoration.layer,
 		}
 	}
 
@@ -627,50 +561,44 @@ save_visual_chunk_to_json :: proc(coord: ChunkCoord, chunk: Visual_Chunk) {
 // CONFIGURATION: Choose your approach
 // ==================================
 // To use JSON instead of binary, replace the function calls:
-// load_collision_chunk_from_disk -> load_collision_chunk_from_json
-// load_visual_chunk_from_disk -> load_visual_chunk_from_json
-// save_collision_chunk_to_disk -> save_collision_chunk_to_json
+// load_collision_chunk_binary -> load_collision_chunk_from_json
+// load_visual_chunk_binary -> load_visual_chunk_from_json
+// save_collision_chunk_binary -> save_collision_chunk_to_json
 // save_visual_chunk_to_disk -> save_visual_chunk_to_json
 
 // Binary visual chunk format:
 // [4 bytes: version] [4 bytes: chunk_x] [4 bytes: chunk_y] 
 // [4096 bytes: sprite data] [4 bytes: entity_count] [entity_data...] 
 // [4 bytes: decoration_count] [decoration_data...]
-load_visual_chunk_from_disk :: proc(coord: ChunkCoord) -> Visual_Chunk {
+load_visual_chunk_binary :: proc(coord: ChunkCoord) -> Visual_Chunk {
+	f_name := "load_visual_chunk_binary::(coord:ChunkCoord)->Visual_Chunk : "
 	chunk := Visual_Chunk {
-		entities    = make([dynamic]Entity),
+		entities    = make([dynamic]Entity_Handle),
 		decorations = make([dynamic]Decoration),
 		is_dirty    = false,
 	}
-
 	filepath := get_visual_chunk_path(coord)
 	defer delete(filepath)
-
 	data, read_ok := os.read_entire_file(filepath)
 	if !read_ok {
 		fmt.printf("Could not read visual chunk file: %s\n", filepath)
 		return generate_default_visual_chunk(coord)
 	}
 	defer delete(data)
-
 	if len(data) < 12 + CHUNK_SIZE * CHUNK_SIZE * 4 {
 		fmt.printf("Invalid visual chunk file size: %s\n", filepath)
 		return generate_default_visual_chunk(coord)
 	}
 
 	offset := 0
-
 	// Read header
-	//version := (cast(^i32)&data[offset])^;offset += 4
 	chunk_x := (cast(^i32)&data[offset])^;offset += 4
 	chunk_y := (cast(^i32)&data[offset])^;offset += 4
-
 	// Verify coordinates
 	if chunk_x != coord.x || chunk_y != coord.y {
-		fmt.printf("Visual chunk coordinate mismatch in file: %s\n", filepath)
+		fmt.printf("%s Visual chunk coordinate mismatch in file: %s\n", f_name, filepath)
 		return generate_default_visual_chunk(coord)
 	}
-
 	// Read sprite data
 	for y in 0 ..< CHUNK_SIZE {
 		for x in 0 ..< CHUNK_SIZE {
@@ -678,22 +606,19 @@ load_visual_chunk_from_disk :: proc(coord: ChunkCoord) -> Visual_Chunk {
 			offset += 4
 		}
 	}
-
 	// Read entities
 	entity_count := (cast(^i32)&data[offset])^;offset += 4
-	for i in 0 ..< entity_count {
-		entity := Entity{}
-		entity.pos.x = (cast(^f32)&data[offset])^;offset += 4
-		entity.pos.y = (cast(^f32)&data[offset])^;offset += 4
-		entity.vel.x = (cast(^f32)&data[offset])^;offset += 4
-		entity.vel.y = (cast(^f32)&data[offset])^;offset += 4
-		//entity.sprite = cast(Sprite_ID)(cast(^u32)&data[offset])^;offset += 4
-		append(&chunk.entities, entity)
+	for i := 0; i < int(entity_count); i += 1 {
+		kind := (cast(^EntityKind)&data[offset])^;offset += 4
+		pos_x := (cast(^f32)&data[offset])^;offset += 4
+		pos_y := (cast(^f32)&data[offset])^;offset += 4
+		handle := create_entity(kind, {pos_x, pos_y})
+		append(&chunk.entities, handle)
 	}
-
 	// Read decorations
 	decoration_count := (cast(^i32)&data[offset])^;offset += 4
-	for i in 0 ..< decoration_count {
+	fmt.printf("%s Decoration count: %i\n", f_name, decoration_count)
+	for i := 0; i < int(decoration_count); i += 1 {
 		decoration := Decoration{}
 		decoration.pos.x = (cast(^f32)&data[offset])^;offset += 4
 		decoration.pos.y = (cast(^f32)&data[offset])^;offset += 4
@@ -706,33 +631,28 @@ load_visual_chunk_from_disk :: proc(coord: ChunkCoord) -> Visual_Chunk {
 	return chunk
 }
 
-save_collision_chunk_to_disk :: proc(coord: ChunkCoord, chunk: Collision_Chunk) {
+save_collision_chunk_binary :: proc(coord: ChunkCoord, chunk: Collision_Chunk) {
+	fmt.printf("TODO - FIX COLLISION CHUNK SAVE TO DISK\n")
+	//return
+
 	filepath := get_collision_chunk_path(coord)
 	defer delete(filepath)
-
 	// Create directory if it doesn't exist
-	os.make_directory("data/chunks/collision", 0o755)
-
+	os.make_directory("data/chunks/collision", 0)
 	// Calculate file size
 	file_size := 12 + CHUNK_SIZE * CHUNK_SIZE
 	data := make([]u8, file_size)
 	defer delete(data)
-
-	// Write header
 	offset := 0
-	//(cast(^i32)&data[0])^ = COLLISION_CHUNK_VERSION
 	(cast(^i32)&data[offset])^ = coord.x;offset += 4
-	(cast(^i32)&data[offset])^ = coord.y;;offset += 4
-
+	(cast(^i32)&data[offset])^ = coord.y;offset += 4
 	// Write tile data
-	
 	for y in 0 ..< CHUNK_SIZE {
 		for x in 0 ..< CHUNK_SIZE {
 			data[offset] = cast(u8)chunk.tiles[y][x]
 			offset += 1
 		}
 	}
-
 	// Write to file
 	write_ok := os.write_entire_file(filepath, data)
 	if !write_ok {
@@ -745,21 +665,16 @@ save_collision_chunk_to_disk :: proc(coord: ChunkCoord, chunk: Collision_Chunk) 
 save_visual_chunk_to_disk :: proc(coord: ChunkCoord, chunk: Visual_Chunk) {
 	filepath := get_visual_chunk_path(coord)
 	defer delete(filepath)
-
 	// Create directory if it doesn't exist
 	os.make_directory("data/chunks/visual", 0o755)
-
 	// Calculate file size
-	base_size := 12 + CHUNK_SIZE * CHUNK_SIZE * 4 + 8 // header + sprites + counts
+	base_size := 8 + CHUNK_SIZE * CHUNK_SIZE * 4 + 8 // header + sprites + counts
 	entity_size := len(chunk.entities) * (4 * 4 + 4) // 4 floats + 1 u32 per entity
 	decoration_size := len(chunk.decorations) * (2 * 4 + 4 + 4) // 2 floats + 2 i32s per decoration
-
 	file_size := base_size + entity_size + decoration_size
 	data := make([]u8, file_size)
 	defer delete(data)
-
 	offset := 0
-
 	// Write header
 	(cast(^i32)&data[offset])^ = VISUAL_CHUNK_VERSION;offset += 4
 	(cast(^i32)&data[offset])^ = coord.x;offset += 4
@@ -775,14 +690,14 @@ save_visual_chunk_to_disk :: proc(coord: ChunkCoord, chunk: Visual_Chunk) {
 
 	// Write entities
 	(cast(^i32)&data[offset])^ = i32(len(chunk.entities));offset += 4
-	for entity in chunk.entities {
-		(cast(^f32)&data[offset])^ = entity.pos.x;offset += 4
-		(cast(^f32)&data[offset])^ = entity.pos.y;offset += 4
-		(cast(^f32)&data[offset])^ = entity.vel.x;offset += 4
-		(cast(^f32)&data[offset])^ = entity.vel.y;offset += 4
+	for handle in chunk.entities {
+		e := hm.get(g.entities, handle)
+		(cast(^f32)&data[offset])^ = e.pos.x;offset += 4
+		(cast(^f32)&data[offset])^ = e.pos.y;offset += 4
+		(cast(^f32)&data[offset])^ = e.vel.x;offset += 4
+		(cast(^f32)&data[offset])^ = e.vel.y;offset += 4
 		//(cast(^u32)&data[offset])^ = cast(u32)entity.sprite;offset += 4
 	}
-
 	// Write decorations
 	(cast(^i32)&data[offset])^ = i32(len(chunk.decorations));offset += 4
 	for decoration in chunk.decorations {
@@ -791,7 +706,6 @@ save_visual_chunk_to_disk :: proc(coord: ChunkCoord, chunk: Visual_Chunk) {
 		//(cast(^u32)&data[offset])^ = cast(u32)decoration.sprite;offset += 4
 		(cast(^i32)&data[offset])^ = decoration.layer;offset += 4
 	}
-
 	// Write to file
 	write_ok := os.write_entire_file(filepath, data)
 	if !write_ok {
@@ -803,10 +717,10 @@ save_visual_chunk_to_disk :: proc(coord: ChunkCoord, chunk: Visual_Chunk) {
 
 // Fallback generation for missing chunks
 generate_default_collision_chunk :: proc(coord: ChunkCoord) -> Collision_Chunk {
+	fmt.printf("Generating default collision chunk at %v\n", coord)
 	chunk := Collision_Chunk {
 		has_data = true,
 	}
-
 	// Generate some basic terrain
 	for y in 0 ..< CHUNK_SIZE {
 		for x in 0 ..< CHUNK_SIZE {
@@ -822,16 +736,17 @@ generate_default_collision_chunk :: proc(coord: ChunkCoord) -> Collision_Chunk {
 		}
 	}
 
+	fmt.printf("Generated default collision chunk has data? %v\n", chunk.has_data)
+
 	return chunk
 }
 
 generate_default_visual_chunk :: proc(coord: ChunkCoord) -> Visual_Chunk {
 	chunk := Visual_Chunk {
-		entities    = make([dynamic]Entity),
+		entities    = make([dynamic]Entity_Handle),
 		decorations = make([dynamic]Decoration),
 		is_dirty    = false,
 	}
-
 	// Generate matching visual sprites
 	for y in 0 ..< CHUNK_SIZE {
 		for x in 0 ..< CHUNK_SIZE {
@@ -844,8 +759,12 @@ generate_default_visual_chunk :: proc(coord: ChunkCoord) -> Visual_Chunk {
 			}
 		}
 	}
-
 	return chunk
+}
+
+//update the level entities
+update_level :: proc(level: ^Level, dt: f32) {
+
 }
 
 // Cleanup
@@ -858,7 +777,6 @@ cleanup_level :: proc(level: ^Level) {
 		delete(chunk.entities)
 		delete(chunk.decorations)
 	}
-
 	delete(level.collision_map)
 	delete(level.active_chunks)
 }
