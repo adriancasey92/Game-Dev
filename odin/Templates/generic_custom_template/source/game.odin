@@ -310,7 +310,7 @@ update_play :: proc() {
 		//Spawn random enemy around player
 		p_pos := get_player().pos
 
-		for i := 0; i < 1; i += 1 {
+		for i := 0; i < 1000; i += 1 {
 			spawn_pos := Vec2 {
 				p_pos.x + rand.float32_range(-200, 200),
 				p_pos.y + rand.float32_range(-200, 200),

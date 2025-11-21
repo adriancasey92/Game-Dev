@@ -17,8 +17,8 @@ Vec2 :: rl.Vector2
 //Constants
 WIDTH :: 1600
 HEIGHT :: 900
-CANVASWIDTH :: 1280
-CANVASHEIGHT :: 720
+CANVASWIDTH :: 600
+CANVASHEIGHT :: 800
 
 WINDOW_NAME :: "Perlin Noise"
 CENTER :: Vec2{WIDTH / 2, HEIGHT / 2}
@@ -114,7 +114,7 @@ init_program :: proc() {
 	for y := 0; y < int(canvas.size.y); {
 		for x := 0; x < int(canvas.size.x); {
 			count += 1
-			fmt.printf("Count: %i\n", count)
+			//fmt.printf("Count: %i\n", count)
 			xrand := rand_uniform(0, CANVASWIDTH)
 			yrand := rand_uniform(0, CANVASHEIGHT)
 
@@ -128,7 +128,7 @@ init_program :: proc() {
 
 			//only increment if we have found a pixel that is unchecked
 			if canvas.pixels[int(pos)].checked {
-				fmt.printf("Pixel created!\n")
+				//fmt.printf("Pixel created!\n")
 				x += 1
 			}
 			if x == WIDTH {

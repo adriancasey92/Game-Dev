@@ -164,7 +164,7 @@ main :: proc() {
 		return
 	}
 
-	rl.SetTargetFPS(50)
+	rl.SetTargetFPS(1500)
 
 	//init program
 	init_program()

@@ -31,7 +31,6 @@ SHAPES_TEXTURE_RECT :: Rect {320, 0, 10, 10}
 
 Texture_Name :: enum {
 	None,
-	Round_Cat,
 	Bush,
 	Frog0,
 	Frog1,
@@ -47,6 +46,7 @@ Texture_Name :: enum {
 	Platform1,
 	Platform2,
 	Platform3,
+	Round_Cat,
 }
 
 Atlas_Texture :: struct {
@@ -66,7 +66,6 @@ Atlas_Texture :: struct {
 
 atlas_textures: [Texture_Name]Atlas_Texture = {
 	.None = {},
-	.Round_Cat = { rect = {0, 0, 20, 24}, offset_top = 0, offset_right = 0, offset_bottom = 0, offset_left = 0, document_size = {20, 24}, duration = 0.000},
 	.Bush = { rect = {21, 0, 45, 18}, offset_top = 6, offset_right = 1, offset_bottom = 0, offset_left = 2, document_size = {48, 24}, duration = 0.100},
 	.Frog0 = { rect = {358, 0, 11, 8}, offset_top = 8, offset_right = 3, offset_bottom = 0, offset_left = 2, document_size = {16, 16}, duration = 0.350},
 	.Frog1 = { rect = {382, 0, 11, 7}, offset_top = 9, offset_right = 3, offset_bottom = 0, offset_left = 2, document_size = {16, 16}, duration = 0.100},
@@ -82,6 +81,7 @@ atlas_textures: [Texture_Name]Atlas_Texture = {
 	.Platform1 = { rect = {67, 0, 96, 16}, offset_top = 0, offset_right = 0, offset_bottom = 0, offset_left = 0, document_size = {96, 16}, duration = 0.000},
 	.Platform2 = { rect = {164, 0, 64, 16}, offset_top = 0, offset_right = 0, offset_bottom = 0, offset_left = 0, document_size = {64, 16}, duration = 0.000},
 	.Platform3 = { rect = {229, 0, 32, 16}, offset_top = 0, offset_right = 0, offset_bottom = 0, offset_left = 0, document_size = {32, 16}, duration = 0.000},
+	.Round_Cat = { rect = {0, 0, 20, 24}, offset_top = 0, offset_right = 0, offset_bottom = 0, offset_left = 0, document_size = {20, 24}, duration = 0.000},
 }
 
 Animation_Name :: enum {

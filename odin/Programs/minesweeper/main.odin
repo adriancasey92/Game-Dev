@@ -369,8 +369,14 @@ handle_input_gameplay :: proc() {
 			screen_to_pos_coord(mpos.y - f32(grid_ypos_offset)),
 		)
 		if cell_index != -1 {
-			grid[cell_index].checked = true
-			on_click_search(&grid[cell_index])
+
+			if grid[cell_index].is_mine {
+				currentState = .ENDING
+				return
+			} else {
+				grid[cell_index].checked = true
+				on_click_search(&grid[cell_index])
+			}
 		}
 
 	}
