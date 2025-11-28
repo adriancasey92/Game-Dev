@@ -5,6 +5,8 @@ import "core:c/libc"
 import "core:fmt"
 import "core:math"
 import "core:mem"
+import "core:os"
+import "core:path/filepath"
 import "core:strings"
 import rl "vendor:raylib"
 
@@ -22,7 +24,7 @@ Vec2 :: rl.Vector2
 
 //Constants
 WIDTH :: 1600
-HEIGHT :: 900
+HEIGHT :: 1000
 WINDOW_NAME :: "Mine Sweeper"
 WIN_TEXT :: "You Win! Press 'r' to reset!"
 LOSE_TEXT :: "Game Over! Press 'r' to reset!"
@@ -55,6 +57,23 @@ GameState :: enum {
 }
 currentState: GameState
 gameDifficulty: GameDifficulty
+
+MusicFile :: struct {
+	filepath:  string,
+	musicData: rl.Music,
+}
+
+currentMusic: ^MusicFile
+currentMusicIndex: i32
+music_paused: bool
+music_time_played: f32
+music_pan: f32
+music_volume: f32
+MusicLibrary: [dynamic]MusicFile
+EffectsLibrary: [dynamic]rl.Sound
+
+music_path :: "assets/sounds/music"
+effects_path :: "assets/sounds/effects"
 
 //Grid
 grid_width :: 450
@@ -98,6 +117,17 @@ pos_to_screen_coord :: proc(pos: f32) -> i32 {
 // when drawn centered. 
 screen_to_pos_coord :: proc(pos: f32) -> i32 {
 	return i32(pos / cell_size)
+}
+
+// initializes audio variables and starts playing music
+init_audio :: proc() {
+	currentMusic = &MusicLibrary[0]
+	rl.PlayMusicStream(currentMusic.musicData)
+	music_time_played = 0
+	music_paused = false
+	music_pan = 0.0
+	music_volume = 0.1
+	rl.SetMusicVolume(currentMusic.musicData, music_volume)
 }
 
 // initializes all necessary variables and the cell grid, mines etc
@@ -219,7 +249,8 @@ on_click_search :: proc(cell: ^Cell) {
 			//if the neighbouring cells are equal to zero
 			if grid[cell.neighbours[i]].num_mines_touching >= cell_val &&
 			   !grid[cell.neighbours[i]].is_mine &&
-			   !grid[cell.neighbours[i]].checked {
+			   !grid[cell.neighbours[i]].checked &&
+			   !grid[cell.neighbours[i]].player_flag {
 				grid[cell.neighbours[i]].checked = true
 				if grid[cell.neighbours[i]].num_mines_touching == cell_val {
 					on_click_search(&grid[cell.neighbours[i]])
@@ -229,8 +260,91 @@ on_click_search :: proc(cell: ^Cell) {
 	}
 }
 
-main :: proc() {
+load_assets :: proc() {
+	load_music_library(&MusicLibrary, music_path)
+	load_effects_library(&EffectsLibrary, effects_path)
+}
 
+load_music_library :: proc(library: ^[dynamic]MusicFile, path: string) {
+	//create a handle to the directory
+	dir_handle, err := os.open(path)
+	defer os.close(dir_handle)
+	if err != nil {
+		fmt.printf("Error opening music directory: %s\n", err)
+		return
+	}
+	f_info: []os.File_Info
+
+
+	f_info, err = os.read_dir(dir_handle, -1)
+	defer os.file_info_slice_delete(f_info)
+	if err != os.ERROR_NONE {
+		fmt.printf("Error reading music directory: %s\n", err)
+		return
+	}
+	fmt.printfln("Current working directory %v contains:", dir_handle)
+
+	for f in f_info {
+		d, name := filepath.split(f.fullpath)
+
+		fmt.printf("dir: %v\n", d)
+		if strings.ends_with(name, ".mp3") ||
+		   strings.ends_with(name, ".wav") ||
+		   strings.ends_with(name, ".ogg") {
+			full_path := filepath.join({path, name})
+			music := rl.LoadMusicStream(rl.TextFormat("%v", full_path))
+			music_file := MusicFile {
+				filepath  = full_path,
+				musicData = music,
+			}
+			fmt.printfln("Loaded music file: %v", full_path)
+			append(library, music_file)
+		}
+	}
+}
+
+//loads sound effects into the effects library
+load_effects_library :: proc(library: ^[dynamic]rl.Sound, path: string) {
+	//create a handle to the directory
+	dir_handle, err := os.open(path)
+	defer os.close(dir_handle)
+	if err != nil {
+		fmt.printf("Error opening effects directory: %s\n", err)
+		return
+	}
+	f_info: []os.File_Info
+
+	defer os.file_info_slice_delete(f_info)
+	f_info, err = os.read_dir(dir_handle, -1)
+
+	if err != os.ERROR_NONE {
+		fmt.printf("Error reading effects directory: %s\n", err)
+		return
+	}
+	fmt.printfln("Current working directory %v contains:", dir_handle)
+
+	for f in f_info {
+		_, name := filepath.split(f.fullpath)
+		if f.is_dir {
+			fmt.printfln("  <DIR> %s\n", name)
+			continue
+		} else {
+			fmt.printfln("%v (%v bytes)", name, f.size)
+		}
+
+		if strings.ends_with(name, ".mp3") ||
+		   strings.ends_with(name, ".wav") ||
+		   strings.ends_with(name, ".ogg") {
+			full_path := filepath.join({path, name})
+			effect := rl.LoadSound(rl.TextFormat("%v", full_path))
+			rl.SetSoundVolume(effect, 0.1)
+			fmt.printfln("Loaded music file: %v", full_path)
+			append(library, effect)
+		}
+	}
+}
+
+main :: proc() {
 	//Memory leak allocator
 	default_allocator := context.allocator
 	tracking_allocator: mem.Tracking_Allocator
@@ -257,14 +371,24 @@ main :: proc() {
 		fmt.printf("ERR: Window not ready?\n")
 		return
 	}
+	//Disable exit key, still allows window to be closed with close button
+	rl.SetExitKey(.KEY_NULL)
 	//Set FPS
 	rl.SetTargetFPS(60)
 
+	rl.InitAudioDevice()
+
+	//Load assets
+	load_assets()
+
+	//Init audio
+	init_audio()
 	//init program
 	init_program()
 
 	//Program loop
 	for GAME_RUNNING {
+		rl.UpdateMusicStream(currentMusic.musicData)
 		handle_input()
 		update()
 		draw()
@@ -275,26 +399,34 @@ main :: proc() {
 	clear(&grid)
 	delete(grid)
 
+	unload_music_library(&MusicLibrary)
+	delete(MusicLibrary)
+	unload_effects_library(&EffectsLibrary)
+	delete(EffectsLibrary)
+	rl.CloseAudioDevice()
 	//to check if we have leaked memory
 	reset_tracking_allocator(&tracking_allocator)
 }
 
+
+//Handles gameplay updates
 update_gameplay :: proc() {
 	time_elapsed += rl.GetFrameTime()
 	player_flag_correct_count := 0
 	player_flag_incorrect_count := 0
-
 	player_cell_checked_count := 0
+
+	//Check win condition
 	for cell in grid {
-		//check game over
 		if cell.checked {
-			if cell.is_mine {
-				fmt.printf("Game over!\n")
-				currentState = .ENDING
+			//If we have clicked on a mine, end game
+			if cell.is_mine {currentState = .ENDING
 			} else {
+				//count the number of non-mine cells that have been checked
 				player_cell_checked_count += 1
 			}
 		} else {
+			//count the number of correctly and incorrectly placed flags
 			if cell.player_flag == true && cell.is_mine {
 				player_flag_correct_count += 1
 			} else if cell.player_flag && !cell.is_mine {
@@ -302,112 +434,121 @@ update_gameplay :: proc() {
 			}
 		}
 	}
+	//Win condition - all mines have been correctly flagged, and no incorrect flags
 	if i32(player_flag_correct_count) == num_mines && player_flag_incorrect_count == 0 {
 		playerWins = true
 		currentState = .ENDING
 	}
-
+	//Another win condition - all non-mine cells have been checked
 	if i32(player_cell_checked_count) == ((grid_cols * grid_rows) - num_mines) {
 		playerWins = true
 		currentState = .ENDING
 	}
 }
 
-
+//General update handler
 update :: proc() {
-
 	#partial switch (currentState) {
 	case .GAMEPLAY:
 		update_gameplay()
-	case .ENDING:
 	}
-	//Make sure we can pause/unpause
 }
 
+//Handles title input
 handle_input_title :: proc() {
-	if rl.IsKeyPressed(.ONE) {
-		gameDifficulty = .Beginner
-	}
-	if rl.IsKeyPressed(.TWO) {
-		gameDifficulty = .Intermediate
-	}
-	if rl.IsKeyPressed(.THREE) {
-		gameDifficulty = .Expert
-	}
-	if rl.IsKeyPressed(.ENTER) {
-		currentState = .GAMEPLAY
-		reset_game()
-	}
+	if rl.IsKeyPressed(.ESCAPE) {GAME_RUNNING = false}
+	if rl.IsKeyPressed(.ONE) {gameDifficulty = .Beginner}
+	if rl.IsKeyPressed(.TWO) {gameDifficulty = .Intermediate}
+	if rl.IsKeyPressed(.THREE) {gameDifficulty = .Expert}
+	if rl.IsKeyPressed(.ENTER) {currentState = .GAMEPLAY;reset_game()}
 }
 
+//Handles gameplay input
 handle_input_gameplay :: proc() {
+	if rl.IsKeyPressed(.ESCAPE) {currentState = .TITLE}
 	if rl.IsKeyPressed(.R) {reset_game()}
-	if rl.IsKeyPressed(.ONE) {
-		gameDifficulty = .Beginner
-		reset_game()
-	}
-
-	if rl.IsKeyPressed(.TWO) {
-		gameDifficulty = .Intermediate
-		reset_game()
-	}
-
-	if rl.IsKeyPressed(.THREE) {
-		gameDifficulty = .Expert
-		reset_game()
-	}
-
-
-	if rl.IsKeyPressed(.F2) {
-		enable_hint = !enable_hint
-	}
-
+	if rl.IsKeyPressed(.ONE) {gameDifficulty = .Beginner;reset_game()}
+	if rl.IsKeyPressed(.TWO) {gameDifficulty = .Intermediate;reset_game()}
+	if rl.IsKeyPressed(.THREE) {gameDifficulty = .Expert;reset_game()}
 	if rl.IsMouseButtonPressed(.LEFT) {
 		mpos := rl.GetMousePosition()
 		cell_index := index(
 			screen_to_pos_coord(mpos.x - f32(grid_xpos_offset)),
 			screen_to_pos_coord(mpos.y - f32(grid_ypos_offset)),
 		)
-		if cell_index != -1 {
-
+		if cell_index != -1 && !grid[cell_index].player_flag && !grid[cell_index].checked {
 			if grid[cell_index].is_mine {
+				rl.PlaySound(EffectsLibrary[2])
 				currentState = .ENDING
 				return
 			} else {
-				grid[cell_index].checked = true
-				on_click_search(&grid[cell_index])
+				if !grid[cell_index].player_flag && !grid[cell_index].checked {
+					rl.PlaySound(EffectsLibrary[1])
+					grid[cell_index].checked = true
+					on_click_search(&grid[cell_index])
+				}
 			}
 		}
-
 	}
-
 	if rl.IsMouseButtonPressed(.RIGHT) {
+
+
 		mpos := rl.GetMousePosition()
 		cell_index := index(
 			screen_to_pos_coord(mpos.x - f32(grid_xpos_offset)),
 			screen_to_pos_coord(mpos.y - f32(grid_ypos_offset)),
 		)
-		if cell_index != -1 {
+		if cell_index != -1 && !grid[cell_index].checked {
+			rl.PlaySound(EffectsLibrary[0])
 			grid[cell_index].player_flag = !grid[cell_index].player_flag
 		}
 	}
 }
 
+//Handles ending input
 handle_input_ending :: proc() {
-	if rl.IsKeyPressed(.R) {
-		reset_game()
-	}
-	if rl.IsKeyPressed(.F2) {
-		enable_hint = !enable_hint
-	}
+	if rl.IsKeyPressed(.R) {reset_game()}
 }
 
+//General input handler
 handle_input :: proc() {
-
-	if rl.WindowShouldClose() {
-		GAME_RUNNING = false
+	if rl.WindowShouldClose() {GAME_RUNNING = false}
+	//Next song
+	if rl.IsKeyPressed(.N) {
+		currentMusicIndex := -1
+		for &musicFile, i in MusicLibrary {
+			if &musicFile == currentMusic {
+				currentMusicIndex = i
+				break
+			}
+		}
+		if currentMusicIndex != -1 {
+			rl.StopMusicStream(currentMusic.musicData)
+			nextIndex := (currentMusicIndex + 1) % len(MusicLibrary)
+			currentMusic = &MusicLibrary[nextIndex]
+			rl.PlayMusicStream(currentMusic.musicData)
+			rl.SetMusicVolume(currentMusic.musicData, music_volume)
+		}
+	}
+	//Volume control
+	//Increase/decrease volume
+	if rl.IsKeyPressed(.EQUAL) || rl.IsKeyPressed(.KP_ADD) {
+		music_volume += 0.1
+		if music_volume > 1.0 {music_volume = 1.0}
+		rl.SetMusicVolume(currentMusic.musicData, music_volume)
+	}
+	if rl.IsKeyPressed(.MINUS) || rl.IsKeyPressed(.KP_SUBTRACT) {
+		music_volume -= 0.1
+		if music_volume < 0.0 {music_volume = 0.0}
+		rl.SetMusicVolume(currentMusic.musicData, music_volume)
 	}
 
+	if rl.IsKeyPressed(.F2) {
+		if !playerWins && currentState == .ENDING {
+			enable_hint = !enable_hint}
+	}
+
+	//State specific input handling
 	#partial switch (currentState) {
 	case .TITLE:
 		handle_input_title()
@@ -418,6 +559,7 @@ handle_input :: proc() {
 	}
 }
 
+//Draw title screen
 draw_title :: proc() {
 	titleCol := rl.WHITE
 	rl.DrawText(WINDOW_NAME, WIDTH / 2 - (rl.MeasureText(WINDOW_NAME, 60) / 2), 100, 60, titleCol)
@@ -436,15 +578,15 @@ draw_title :: proc() {
 		titleCol,
 	)
 	rl.DrawText(
-		"[2]. Intermediate- 16x16 Grid - 40 mines",
-		WIDTH / 2 - (rl.MeasureText("[1]. Beginner 			 -  9x9  Grid - 10 mines", 20) / 2),
+		"[2]. Intermediate  - 16x16 Grid - 40 mines",
+		WIDTH / 2 - (rl.MeasureText("[2]. Intermediate  - 16x16 Grid - 40 mines", 20) / 2),
 		320,
 		20,
 		titleCol,
 	)
 	rl.DrawText(
 		"[3]. Expert 			 	- 16x30 Grid - 99 mines",
-		WIDTH / 2 - (rl.MeasureText("[1]. Beginner 			 -  9x9  Grid - 10 mines", 20) / 2),
+		WIDTH / 2 - (rl.MeasureText("[3]. Expert 			 	- 16x30 Grid - 99 mines", 20) / 2),
 		360,
 		20,
 		titleCol,
@@ -459,7 +601,10 @@ draw_title :: proc() {
 }
 
 draw_ending :: proc() {
+	//draw overlay
+	rl.DrawRectangle(0, 0, WIDTH, HEIGHT, rl.Fade(rl.DARKGRAY, 0.6))
 	if playerWins {
+		//draw win text
 		rl.DrawRectangle(
 			WIDTH / 2 - (rl.MeasureText(WIN_TEXT, 25) / 2) - 20,
 			HEIGHT / 2 - 10,
@@ -475,20 +620,15 @@ draw_ending :: proc() {
 			rl.WHITE,
 		)
 	} else {
+		//draw lose text
 		rl.DrawRectangle(
 			WIDTH / 2 - (rl.MeasureText(LOSE_TEXT, 25) / 2) - 20,
-			HEIGHT / 2 - 10,
+			50 - 10,
 			rl.MeasureText(LOSE_TEXT, 25) + 40,
 			45,
 			rl.Fade(rl.RED, 0.6),
 		)
-		rl.DrawText(
-			LOSE_TEXT,
-			WIDTH / 2 - (rl.MeasureText(LOSE_TEXT, 25) / 2),
-			HEIGHT / 2,
-			25,
-			rl.WHITE,
-		)
+		rl.DrawText(LOSE_TEXT, WIDTH / 2 - (rl.MeasureText(LOSE_TEXT, 25) / 2), 50, 25, rl.WHITE)
 	}
 }
 
@@ -578,21 +718,40 @@ draw_game :: proc() {
 			if cell.checked {
 				//if a cell isn't a mine, draw the number of mines touching the cell. 
 				if !cell.is_mine {
-					rl.DrawText(
-						rl.TextFormat("%i", cell.num_mines_touching),
-						i32(
-							f32(pos_to_screen_coord(cell.pos.x)) +
-							f32(grid_xpos_offset) +
-							cell_size / 2.5,
-						),
-						i32(
-							f32(pos_to_screen_coord(cell.pos.y)) +
-							f32(grid_ypos_offset) +
-							cell_size / 3,
-						),
-						20,
-						rl.RED,
-					)
+					if !cell.player_flag {
+						rl.DrawText(
+							rl.TextFormat("%i", cell.num_mines_touching),
+							i32(
+								f32(pos_to_screen_coord(cell.pos.x)) +
+								f32(grid_xpos_offset) +
+								cell_size / 2.5,
+							),
+							i32(
+								f32(pos_to_screen_coord(cell.pos.y)) +
+								f32(grid_ypos_offset) +
+								cell_size / 3,
+							),
+							20,
+							rl.RED,
+						)
+					} else {
+						rl.DrawText(
+							"{F}",
+							i32(
+								f32(pos_to_screen_coord(cell.pos.x)) +
+								f32(grid_xpos_offset) +
+								cell_size / 5,
+							),
+							i32(
+								f32(pos_to_screen_coord(cell.pos.y)) +
+								f32(grid_ypos_offset) +
+								cell_size / 3,
+							),
+							20,
+							rl.YELLOW,
+						)
+					}
+
 				} else {
 					rl.DrawText(
 						"{M}",
@@ -655,6 +814,22 @@ draw_game :: proc() {
 						20,
 						rl.BLUE,
 					)
+				} else if cell.player_flag {
+					rl.DrawText(
+						"{F}",
+						i32(
+							f32(pos_to_screen_coord(cell.pos.x)) +
+							f32(grid_xpos_offset) +
+							cell_size / 5,
+						),
+						i32(
+							f32(pos_to_screen_coord(cell.pos.y)) +
+							f32(grid_ypos_offset) +
+							cell_size / 3,
+						),
+						20,
+						rl.YELLOW,
+					)
 				} else {
 					rl.DrawText(
 						rl.TextFormat("%i", cell.num_mines_touching),
@@ -681,6 +856,38 @@ draw :: proc() {
 	rl.BeginDrawing()
 	rl.ClearBackground(BACKGROUND_COL)
 
+	rl.DrawText(
+		"'+' | '-'",
+		0 + (rl.MeasureText("Music Volume: %i%%", 20) / 2) - rl.MeasureText("'+' | '-'", 20) / 2,
+		HEIGHT - 50,
+		20,
+		rl.WHITE,
+	)
+	rl.DrawText(
+		rl.TextFormat("Music Volume: %.f%%", music_volume * 100),
+		15,
+		HEIGHT - 30,
+		20,
+		rl.WHITE,
+	)
+
+	rl.DrawText(
+		"Press 'N' for next song.",
+		WIDTH - (rl.MeasureText("Press 'N' for next song.", 20) + 20),
+		HEIGHT - 50,
+		20,
+		rl.WHITE,
+	)
+
+	rl.DrawText(
+		rl.TextFormat("%s", filepath.base(currentMusic.filepath)),
+		WIDTH -
+		(rl.MeasureText(rl.TextFormat("%s", filepath.base(currentMusic.filepath)), 20) + 60),
+		HEIGHT - 30,
+		20,
+		rl.WHITE,
+	)
+
 	switch (currentState) {
 	case .TITLE:
 		draw_title()
@@ -692,4 +899,20 @@ draw :: proc() {
 	}
 	//rl.EndMode2D()
 	rl.EndDrawing()
+}
+
+
+unload_music_library :: proc(library: ^[dynamic]MusicFile) {
+	for &musicFile in library {
+		rl.UnloadMusicStream(musicFile.musicData)
+	}
+	clear(library)
+}
+
+
+unload_effects_library :: proc(library: ^[dynamic]rl.Sound) {
+	for &effect in library {
+		rl.UnloadSound(effect)
+	}
+	clear(library)
 }
