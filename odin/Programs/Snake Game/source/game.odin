@@ -178,6 +178,8 @@ init :: proc() {
 	atlas_image := rl.LoadImageFromMemory(".png", raw_data(ATLAS_DATA), i32(len(ATLAS_DATA))) //load the raw data into atlas_image
 	defer (rl.UnloadImage(atlas_image))
 
+	//Game memory object
+	//This holds all of the game state and is preserved across hot-reloads.
 	g^ = Game_Memory {
 		state = .mainMenu,
 		atlas = rl.LoadTextureFromImage(atlas_image),
@@ -195,6 +197,7 @@ init :: proc() {
 
 	//This clears the handlemap and creates the player handle. 
 	reset_handles()
+	//init_quadtree(g.quadtree)
 
 	//fonts
 	num_glyphs := len(atlas_glyphs)

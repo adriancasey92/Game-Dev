@@ -20,7 +20,6 @@ import "core:unicode/utf8"
 // import "../game" // Assuming your chunk code is in a game package
 
 // Redefine the types here for the tool (or import from your game package)
-DEFAULT_GENERATED_NUM_CHUNKS :: 3
 CHUNK_SIZE :: 32
 COLLISION_CHUNK_VERSION :: 1
 VISUAL_CHUNK_VERSION :: 1
@@ -70,18 +69,12 @@ EntityKind :: enum {
 	defense_wall,
 }
 
+
 Collision_Chunk :: struct {
 	coord_x: i32,
 	coord_y: i32,
 	tiles:   [CHUNK_SIZE][CHUNK_SIZE]Tile_Type,
 	//has_data: bool,
-}
-
-// JSON structures for serialization
-JSON_Collision_Chunk :: struct {
-	coord_x: i32,
-	coord_y: i32,
-	tiles:   [CHUNK_SIZE][CHUNK_SIZE]u8, // Store as numbers for JSON
 }
 
 Visual_Chunk :: struct {
@@ -91,16 +84,6 @@ Visual_Chunk :: struct {
 	entities:    [dynamic]Entity,
 	decorations: [dynamic]Decoration,
 	is_dirty:    bool, //whether visual chunk needs to be saved
-}
-
-JSON_Visual_Chunk :: struct {
-	coord_x:          i32,
-	coord_y:          i32,
-	sprites:          [CHUNK_SIZE][CHUNK_SIZE]u32,
-	entity_count:     i32,
-	entities:         []JSON_Entity,
-	decoration_count: i32,
-	decorations:      []JSON_Decoration,
 }
 
 // Command line interface
@@ -126,6 +109,12 @@ FileInfo :: struct {
 	chunk_type: string, // "collision" or "visual"
 }
 
+// JSON structures for serialization
+JSON_Collision_Chunk :: struct {
+	coord_x: i32,
+	coord_y: i32,
+	tiles:   [CHUNK_SIZE][CHUNK_SIZE]u8, // Store as numbers for JSON
+}
 
 JSON_Entity :: struct {
 	kind: EntityKind,
@@ -138,6 +127,15 @@ JSON_Decoration :: struct {
 	layer:  i32,
 }
 
+JSON_Visual_Chunk :: struct {
+	coord_x:          i32,
+	coord_y:          i32,
+	sprites:          [CHUNK_SIZE][CHUNK_SIZE]u32,
+	entity_count:     i32,
+	entities:         []JSON_Entity,
+	decoration_count: i32,
+	decorations:      []JSON_Decoration,
+}
 
 main :: proc() {
 
@@ -147,19 +145,14 @@ main :: proc() {
 	fmt.printf("------------------------------\n")
 	switch config.command {
 	case .HELP:
-		fmt.printf("\nChunkConverter.odin - Help!\n")
 		print_help()
 	case .JSON_TO_BINARY:
-		fmt.printf("\nChunkConverter.odin - JSON_TO_BIN!\n")
 		convert_single_file(config, .JSON_TO_BINARY)
 	case .BINARY_TO_JSON:
-		fmt.printf("\nChunkConverter.odin - BIN_TO_JSON!\n")
 		convert_single_file(config, .BINARY_TO_JSON)
 	case .CONVERT_ALL:
-		fmt.printf("\nChunkConverter.odin - CONVERT_ALL!\n")
 		convert_directory(config)
 	case .VALIDATE:
-		fmt.printf("\nChunkConverter.odin - VALIDATE!\n")
 		validate_chunks(config)
 	}
 
@@ -335,128 +328,111 @@ convert_directory :: proc(config: Config) {
 		fmt.println("Error: Input and output directories are required")
 		return
 	}
-	fmt.printf("Input Path: %s\n", config.input_path)
-	fmt.printf("Output Path: %s\n", config.output_path)
 	// Create output directory
 	if !os.exists(config.output_path) {
 		fmt.printf("Creating dir: %s\n", config.output_path)
-		err := os.make_directory(config.output_path, 0)
-		if err != nil {
-			fmt.printf("Err: %s\n", err)
-			return
-		}
+		os.make_directory(config.output_path, 0)
 	}
-	
 	// Find all chunk files
 	files := find_chunk_files(config.input_path, config.recursive)
 	defer delete(files)
 	fmt.printf("Found %i files\n", len(files))
-
-	//fallback for no level data
-	if len(files) == 0 {
-		fmt.printf("No chunk files found in %s\n", config.input_path)
-		generate_default_level(config.output_path)
-		return
+	for file in files {
+		fmt.printf("File info: %s\n", file.name)
+		fmt.printf("File chunk type: %s\n", file.chunk_type)
 	}
-	else
-	{
-		for file in files {
-			fmt.printf("File info: %s\n", file.name)
-			fmt.printf("File chunk type: %s\n", file.chunk_type)
-		}
-		fmt.printf("------------------------------\n")
-		//Metrics
-		converted := 0
-		skipped := 0
-		failed := 0
-		//For every file found
-		for file_info in files {
-			// Determine conversion direction
-			is_json := strings.has_suffix(file_info.path, ".json")
-			is_binary := strings.has_suffix(file_info.path, ".dat")
+	fmt.printf("------------------------------\n")
+	//Metrics
+	converted := 0
+	skipped := 0
+	failed := 0
+	//For every file found
+	for file_info in files {
+		// Determine conversion direction
+		is_json := strings.has_suffix(file_info.path, ".json")
+		is_binary := strings.has_suffix(file_info.path, ".dat")
 
-			//we only want to check .dat and .json files
-			if !is_json && !is_binary {continue}
-			//determine conversion based on file type
-			direction := Command.JSON_TO_BINARY if is_json else .BINARY_TO_JSON
-			output_name := file_info.name
-			type := ""
-			//if we have a json file, do binary conversion
-			if is_json {
-				type = "/binary"
-				folder_path := filepath.join({config.output_path, type})
-				if !os.exists(folder_path) {
-					err := os.make_directory(folder_path)
-					if err != nil {
-						fmt.printf("Err: %s\n", err)
-					}
+		//we only want to check .dat and .json files
+		if !is_json && !is_binary {continue}
+		//determine conversion based on file type
+		direction := Command.JSON_TO_BINARY if is_json else .BINARY_TO_JSON
+		output_name := file_info.name
+		type := ""
+		//if we have a json file, do binary conversion
+		if is_json {
+			type = "/binary"
+			folder_path := filepath.join({config.output_path, type})
+			if !os.exists(folder_path) {
+				err := os.make_directory(folder_path)
+				if err != nil {
+					fmt.printf("Err: %s\n", err)
 				}
-				output_name, _ = strings.replace(output_name, ".json", ".dat", 1)
-			} else {
-				type = "/json"
-				folder_path := filepath.join({config.output_path, type})
-				if !os.exists(folder_path) {
-					err := os.make_directory(folder_path)
-					if err != nil {
-						fmt.printf("Err: %s\n", err)
-					}
-				}
-				output_name, _ = strings.replace(output_name, ".dat", ".json", 1)
 			}
-			output_path: string
-			output_dir: string
-			// Check to see what type of file we are converting
-			if file_info.chunk_type == "collision" {
-				output_dir = filepath.join({config.output_path, type, "/collision"})
-				fmt.printf("Output dir: %s\n", output_dir)
-				//If directory doesn't exist, create it. 
-				if !os.exists(output_dir) {
-					fmt.printf("Creating dir: %s\n", output_dir)
-					err := os.make_directory(output_dir, 0)
-					if err != nil {
-						fmt.printf("Err: %s\n", err)
-					}
+			output_name, _ = strings.replace(output_name, ".json", ".dat", 1)
+		} else {
+			type = "/json"
+			folder_path := filepath.join({config.output_path, type})
+			if !os.exists(folder_path) {
+				err := os.make_directory(folder_path)
+				if err != nil {
+					fmt.printf("Err: %s\n", err)
 				}
-				output_path = filepath.join({config.output_path, type, "/collision/", output_name})
-				exists := os.exists(output_path)
-				//only try to convert if file doesn't exist
-				if !exists {
-					if convert_collision_chunk(file_info.path, output_path, direction) {
-						fmt.printf("Converted: %s -> %s\n", file_info.path, output_path)
-						converted += 1
-					} else {
-						failed += 1
-						fmt.printf("Failed: %s\n", file_info.path)
-					}
-				} else {skipped += 1}
-			} else if file_info.chunk_type == "visual" {
-				output_dir = filepath.join({config.output_path, type, "/visual"})
-				fmt.printf("Output dir: %s\n", output_dir)
-				if !os.exists(output_dir) {
-					fmt.printf("Creating dir: %s\n", output_dir)
-					os.make_directory(output_dir, 0)
-				}
-				output_path = filepath.join({config.output_path, type, "/visual/", output_name})
-				exists := os.exists(output_path)
-				if !exists {
-					if convert_visual_chunk(file_info.path, output_path, direction) {
-						fmt.printf("Converted: %s -> %s\n", file_info.path, output_path)
-						converted += 1
-					} else {
-						failed += 1
-						fmt.printf("Failed: %s\n", file_info.path)
-					}
-				} else {skipped += 1}
 			}
-			fmt.printf("-----------------------------------------------------------------\n")
+			output_name, _ = strings.replace(output_name, ".dat", ".json", 1)
 		}
-		fmt.printf(
-			"\nConversion complete: %d successful, %d failed, %d skipped\n",
-			converted,
-			failed,
-			skipped,
-		)
+		output_path: string
+		output_dir: string
+		// Check to see what type of file we are converting
+		if file_info.chunk_type == "collision" {
+			output_dir = filepath.join({config.output_path, type, "/collision"})
+			fmt.printf("Output dir: %s\n", output_dir)
+			//If directory doesn't exist, create it. 
+			if !os.exists(output_dir) {
+				fmt.printf("Creating dir: %s\n", output_dir)
+				err := os.make_directory(output_dir, 0)
+				if err != nil {
+					fmt.printf("Err: %s\n", err)
+				}
+			}
+			output_path = filepath.join({config.output_path, type, "/collision/", output_name})
+			exists := os.exists(output_path)
+			//only try to convert if file doesn't exist
+			if !exists {
+				if convert_collision_chunk(file_info.path, output_path, direction) {
+					fmt.printf("Converted: %s -> %s\n", file_info.path, output_path)
+					converted += 1
+				} else {
+					failed += 1
+					fmt.printf("Failed: %s\n", file_info.path)
+				}
+			} else {skipped += 1}
+		} else if file_info.chunk_type == "visual" {
+			output_dir = filepath.join({config.output_path, type, "/visual"})
+			fmt.printf("Output dir: %s\n", output_dir)
+			if !os.exists(output_dir) {
+				fmt.printf("Creating dir: %s\n", output_dir)
+				os.make_directory(output_dir, 0)
+			}
+			output_path = filepath.join({config.output_path, type, "/visual/", output_name})
+			exists := os.exists(output_path)
+			if !exists {
+				if convert_visual_chunk(file_info.path, output_path, direction) {
+					fmt.printf("Converted: %s -> %s\n", file_info.path, output_path)
+					converted += 1
+				} else {
+					failed += 1
+					fmt.printf("Failed: %s\n", file_info.path)
+				}
+			} else {skipped += 1}
+		}
+		fmt.printf("-----------------------------------------------------------------\n")
 	}
+	fmt.printf(
+		"\nConversion complete: %d successful, %d failed, %d skipped\n",
+		converted,
+		failed,
+		skipped,
+	)
 }
 
 validate_chunks :: proc(config: Config) {
@@ -645,7 +621,6 @@ save_collision_chunk_json :: proc(filepath: string, chunk: Collision_Chunk) -> b
 }
 
 save_collision_chunk_binary :: proc(filepath: string, chunk: Collision_Chunk) -> bool {
-	fmt.printf("Saving collision chunk binary to %s\n", filepath)
 	// Implementation similar to your main code
 	// Calculate file size
 	file_size := 8 + CHUNK_SIZE * CHUNK_SIZE
@@ -655,7 +630,7 @@ save_collision_chunk_binary :: proc(filepath: string, chunk: Collision_Chunk) ->
 	// Write header
 	(cast(^i32)&data[0])^ = chunk.coord_x
 	(cast(^i32)&data[4])^ = chunk.coord_y
-	fmt.printf("Header written: coord_x=%d, coord_y=%d\n", chunk.coord_x, chunk.coord_y)
+
 	// Write tile data
 	offset := 8
 	for y in 0 ..< CHUNK_SIZE {
@@ -946,61 +921,3 @@ save_visual_chunk_binary :: proc(filepath: string, chunk: Visual_Chunk) -> bool 
 	}
 	return true
 }
-
-//Generates a default level with empty chunks as JSON
-generate_default_level::proc(output_path: string)
-{
-	/*num_chunks := DEFAULT_GENERATED_NUM_CHUNKS
-	c_coord:= ChunkCoord{}
-	for x:=0; x<num_chunks; x+=1
-	{
-		c_coord.x=0
-		c_coord.y=i32(x)
-		c_chunk:=generate_default_collision_chunk(c_coord)
-		save_collision_chunk_json(output_path, c_chunk)
-	}
-	
-	generate_default_visual_chunks(num_chunks)*/
-}
-//fallback function to generate default collision chunks
-generate_default_collision_chunk :: proc(c: ChunkCoord) -> Collision_Chunk {
-	fmt.printf("Generating default collision chunk at %v\n", c)
-	chunk := Collision_Chunk {
-		coord_x = c.x,
-		coord_y = c.y,
-	}
-
-	// Generate some basic terrain
-	for y in 0 ..< CHUNK_SIZE {
-		for x in 0 ..< CHUNK_SIZE {
-			if y == CHUNK_SIZE - 1 { 	// Bottom row is solid
-				chunk.tiles[y][x] = .SOLID
-			}else {
-				chunk.tiles[y][x] = .EMPTY
-			}
-		}
-	}
-	return chunk
-}
-
-//fallback function to generate default visual
-generate_default_visual_chunks:: proc(num_chunks: int){
-	/*fmt.printf("Generating %d default collision chunks...\n", num_chunks)
-	for y:=0;y<num_chunks;y+=1{
-			chunk := Collision_Chunk {
-				coord_x = x,
-				coord_y = y,
-			}
-			// Fill with default data (e.g., all EMPTY)
-			for ty in 0 ..< CHUNK_SIZE {
-				for tx in 0 ..< CHUNK_SIZE {
-					chunk.tiles[ty][tx] = Tile_Type.EMPTY
-				}
-			}
-			output_path := fmt.sprintf("default_collision_chunk_%d_%d.dat", x, y)
-			save_collision_chunk_binary(output_path, chunk)
-	}*/
-	fmt.printf("Generating %d default visual chunks...\n", num_chunks)
-}
-
-

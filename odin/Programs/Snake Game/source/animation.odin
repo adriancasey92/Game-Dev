@@ -24,6 +24,7 @@ Animation :: struct {
 animation_create :: proc(anim: Animation_Name) -> Animation {
 	//fmt.printf("Creating anim: %v\n", anim)
 	a := atlas_animations[anim]
+
 	return {
 		current_frame = a.first_frame,
 		atlas_anim = anim,
@@ -34,6 +35,7 @@ animation_create :: proc(anim: Animation_Name) -> Animation {
 animation_update :: proc(a: ^Animation, dt: f32) -> bool {
 	a.timer -= dt
 	looped := false
+
 	if a.timer <= 0 {
 		a.current_frame = Texture_Name(int(a.current_frame) + 1)
 		anim := atlas_animations[a.atlas_anim]
@@ -45,6 +47,7 @@ animation_update :: proc(a: ^Animation, dt: f32) -> bool {
 
 		a.timer = atlas_textures[a.current_frame].duration
 	}
+
 	return looped
 }
 

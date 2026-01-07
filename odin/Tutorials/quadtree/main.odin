@@ -20,8 +20,7 @@ PAUSE: bool
 FIN: bool
 
 QuadHead: ^Quad
-nodeCapacity :: 4
-
+nodeCapacity :: 16
 Point :: struct {
 	pos: Vec2,
 }
