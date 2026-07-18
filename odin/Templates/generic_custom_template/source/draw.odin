@@ -6,6 +6,8 @@ import rl "vendor:raylib"
 //ENTITIES
 ENTITES_DRAWN: i32 = 0
 
+
+// Draws [texture_name] from the atlas at [pos] with optional fade, flipping and rotation
 draw_texture :: proc(
 	texture_name: Texture_Name,
 	pos: Vec2,
@@ -48,7 +50,10 @@ draw_texture :: proc(
 	rl.DrawTexturePro(atlas, atlas_rect, dest, origin, rotation, tint_col)
 }
 
-draw_entities :: proc(fade: f32) {
+// NO LONGER USED
+// Draws all entities within camera bounds
+/*draw_entities :: proc(fade: f32) {
+	//fmt.printf("NOT USED ANY MORE STOP USING THIS FUNTION")
 	ENTITES_DRAWN = 0
 	//iter := hm.make_iter(&g.entities)
 	//     for e in hm.iter(&my_iter) {})
@@ -60,6 +65,24 @@ draw_entities :: proc(fade: f32) {
 		draw_entity_generic(item.handle, fade)
 		ENTITES_DRAWN += 1
 	}
+}*/
+
+
+// Draws all entities within the current level's active chunks
+draw_entities_in_level :: proc(fade: f32) {
+	ENTITES_DRAWN = 0
+	//Iterate over the active chunks
+	for key, val in g.level.active_chunks {
+		for &ent in val.entities {
+			//Skips entity with idx 0
+			if hm.skip_from_handle(ent) {continue}
+			//Skips entity if it is not within current level
+			//fmt.printf("Drawing entity in level with handle %v\n", ent)
+			if within_camera_bounds(ent) == false {continue}
+			draw_entity_generic(ent, fade)
+		}
+	}
+	draw_entity_generic(g.player_handle, fade)
 }
 
 draw_entity_generic :: proc(entity_handle: Entity_Handle, fade: f32) {
@@ -138,12 +161,13 @@ draw_entity_generic :: proc(entity_handle: Entity_Handle, fade: f32) {
 	//rl.DrawRectangleLinesEx(dest, 1, rl.RED)
 	//rl.DrawPixelV(origin, rl.BLUE)
 	rl.DrawTexturePro(atlas, atlas_rect, dest, origin, rotation, rl.Fade(rl.WHITE, fade))
-
+	ENTITES_DRAWN += 1
 	//DEBUG - draw colliders
 	if DEBUG_DRAW_COLLIDERS {draw_entity_colliders(entity_handle)}
 
 }
 
+// Draws the colliders of an entity for debugging purposes
 draw_entity_colliders :: proc(entity_handle: Entity_Handle) {
 	ent := hm.get(g.entities, entity_handle)
 
@@ -159,6 +183,67 @@ draw_entity_colliders :: proc(entity_handle: Entity_Handle) {
 	rl.DrawRectangleRec(ent.head_collider, rl.RED)
 	rl.DrawRectangleLinesEx(ent.corner_collider, .25, rl.PINK)
 	rl.DrawPixelV(ent.pos, rl.PURPLE)
+}
+
+// Draws a visual chunk at the given chunk coordinates
+draw_visual_chunk :: proc(coord: ChunkCoord, chunk: Visual_Chunk, camera: rl.Camera2D) {
+	// Calculate world position of chunk (your existing logic)
+	chunk_world_pos := chunk_to_world_pos(coord)
+
+	// Convert world position to screen position
+	//chunk_screen_pos := world_to_screen(chunk_world_pos)
+
+	// Draw the sprite grid
+	for y in 0 ..< CHUNK_SIZE {
+		for x in 0 ..< CHUNK_SIZE {
+			sprite_id := chunk.sprites[y][x]
+			/*if sprite_id != .NONE */{
+				x_pos := x * TILE_SIZE - (CHUNK_SIZE * TILE_SIZE / 2)
+				y_pos :=
+					y - (y * TILE_SIZE) - int((coord.y * (TILE_SIZE * CHUNK_SIZE))) - TILE_SIZE
+				//fmt.printf("Printing tile at pos [x,y]: [%i,%i]\n", x_pos, y_pos)
+				// Calculate tile position in world space
+				//tile_world_pos := chunk_world_pos + {f32(x * TILE_SIZE), f32(y * TILE_SIZE)}
+
+				// Convert to screen space for Raylib
+				draw_sprite_at_screen_pos(sprite_id, Vec2{f32(x_pos), f32(y_pos)})
+				rl.DrawRectangleLines(i32(x_pos), i32(y_pos), TILE_SIZE, TILE_SIZE, rl.WHITE)
+			}
+		}
+	}
+}
+
+// Draws a tile at a given tile position
+draw_tile :: proc(sprite_id: Sprite_ID, tile_pos: Vec2) {
+	//fmt.printf("Draw_tile %v\n", tile_pos)
+	col := rl.PINK
+	#partial switch sprite_id 
+	{
+	case .GRASS_TILE:
+		col = rl.GREEN
+	case .STONE_TILE:
+		col = rl.GRAY
+	}
+
+	rl.DrawRectangleRec({tile_pos.x, tile_pos.y, TILE_SIZE, TILE_SIZE}, col)
+
+}
+
+// Draws a sprite at a given screen position
+draw_sprite_at_screen_pos :: proc(sprite_id: Sprite_ID, pos: Vec2) {
+
+	col := rl.PINK
+	#partial switch sprite_id 
+	{
+	case .GRASS_TILE:
+		col = rl.GREEN
+	case .STONE_TILE:
+		col = rl.GRAY
+	case:
+
+	}
+
+	rl.DrawRectangleRec({pos.x, pos.y, TILE_SIZE, TILE_SIZE}, col)
 }
 
 draw_text_centered_spacing :: proc(
@@ -294,77 +379,4 @@ draw_text_right_aligned_spacing :: proc(
 			color,
 		)
 	}
-}
-
-draw_visual_chunk :: proc(coord: ChunkCoord, chunk: Visual_Chunk, camera: rl.Camera2D) {
-	// Calculate world position of chunk (your existing logic)
-	chunk_world_pos := chunk_to_world_pos(coord)
-
-	// Convert world position to screen position
-	//chunk_screen_pos := world_to_screen(chunk_world_pos)
-
-	// Draw the sprite grid
-	for y in 0 ..< CHUNK_SIZE {
-		for x in 0 ..< CHUNK_SIZE {
-			sprite_id := chunk.sprites[y][x]
-			if sprite_id != .NONE {
-				x_pos := x * TILE_SIZE - (CHUNK_SIZE * TILE_SIZE / 2)
-				y_pos :=
-					y - (y * TILE_SIZE) - int((coord.y * (TILE_SIZE * CHUNK_SIZE))) - TILE_SIZE
-				//fmt.printf("Printing tile at pos [x,y]: [%i,%i]\n", x_pos, y_pos)
-				// Calculate tile position in world space
-				//tile_world_pos := chunk_world_pos + {f32(x * TILE_SIZE), f32(y * TILE_SIZE)}
-
-				// Convert to screen space for Raylib
-
-
-				draw_sprite_at_screen_pos(sprite_id, Vec2{f32(x_pos), f32(y_pos)})
-			}
-		}
-	}
-
-	rl.DrawPixel(0, 0, rl.BLACK)
-	/*
-	// Handle entities and decorations similarly
-	for entity in chunk.entities {
-		entity_screen_pos := world_to_screen(entity.pos, camera)
-		draw_sprite_at_screen_pos(entity.sprite, entity_screen_pos)
-	}
-
-	for decoration in chunk.decorations {
-		decoration_screen_pos := world_to_screen(decoration.pos, camera)
-		draw_sprite_at_screen_pos(decoration.sprite, decoration_screen_pos)
-	}*/
-}
-
-
-draw_tile :: proc(sprite_id: Sprite_ID, tile_pos: Vec2) {
-	//fmt.printf("Draw_tile %v\n", tile_pos)
-	col := rl.PINK
-	#partial switch sprite_id 
-	{
-	case .GRASS_TILE:
-		col = rl.GREEN
-	case .STONE_TILE:
-		col = rl.GRAY
-	}
-
-	rl.DrawRectangleRec({tile_pos.x, tile_pos.y, TILE_SIZE, TILE_SIZE}, col)
-
-}
-
-draw_sprite_at_screen_pos :: proc(sprite_id: Sprite_ID, pos: Vec2) {
-
-	col := rl.PINK
-	#partial switch sprite_id 
-	{
-	case .GRASS_TILE:
-		col = rl.GREEN
-	case .STONE_TILE:
-		col = rl.GRAY
-	case:
-
-	}
-
-	rl.DrawRectangleRec({pos.x, pos.y, TILE_SIZE, TILE_SIZE}, col)
 }

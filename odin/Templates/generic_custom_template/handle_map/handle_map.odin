@@ -62,6 +62,7 @@ package handle_map_virtual
 
 import "base:builtin"
 import "base:runtime"
+import fmt "core:fmt"
 import vmem "core:mem/virtual"
 
 // Returned from the `add` proc. Store these as permanent references to items in
@@ -211,7 +212,11 @@ add :: proc(
 			return {}, append_err
 		}
 	}
-
+	fmt.printf(
+		"Added item to handle map at idx %v with gen %v\n",
+		new_item.handle.idx,
+		new_item.handle.gen,
+	)
 	return new_item.handle, nil
 }
 
@@ -316,4 +321,8 @@ iter :: proc(it: ^Handle_Map_Iterator($T, $HT, $Max)) -> (val: ^T, h: HT, cond: 
 // }
 skip :: proc(e: $T) -> bool {
 	return e.handle.idx == 0
+}
+
+skip_from_handle :: proc(e: $T) -> bool {
+	return e.idx == 0
 }

@@ -23,7 +23,7 @@ Menu_Type :: enum {
 	settings,
 }
 
-init_menu :: proc() {
+init_all_menus :: proc() {
 	g.main_menu = Menu {
 		title       = "Main Menu",
 		options     = {"Start Game", "Level Editor", "Options", "Exit", ""},

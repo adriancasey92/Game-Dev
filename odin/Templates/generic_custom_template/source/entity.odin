@@ -158,6 +158,7 @@ create_entity :: proc(kind: EntityKind, pos: Vec2) -> Entity_Handle {
 	case .nil:
 		fmt.printf("Entity kind %v not recognized, cannot create entity\n", kind)
 	}
+
 	handle := hm.add(
 		&g.entities,
 		Entity {
@@ -181,12 +182,13 @@ create_entity :: proc(kind: EntityKind, pos: Vec2) -> Entity_Handle {
 	return handle
 }
 
-create_bullfrog :: proc(pos: Vec2) -> Entity_Handle {
+create_bullfrog :: proc(_pos: Vec2) -> Entity_Handle {
+	fmt.printf("Creating bullfrog at position %v\n", _pos)
 	handle := hm.add(
 		&g.entities,
 		Entity {
 			anim = animation_create(.Bullfrog_Idle),
-			pos = pos,
+			pos = _pos,
 			dir = .left,
 			vel = {0, 0},
 			size = {},

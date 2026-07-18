@@ -21,7 +21,6 @@ debug_info_str: []cstring = {
 	"Anim_frame:",
 }
 
-
 //Draws debug player info to top right corner of the screen
 debug_player_draw :: proc() {
 	//p := get_player()
@@ -55,13 +54,14 @@ debug_draw_entity :: proc(entity_handle: Entity_Handle, pos: Vec2) {
 		return
 	}
 
-	rl.DrawRectangleLines(
+	/*(rl.DrawRectangleLines(
 		i32(entity.rect.x),
 		i32(entity.rect.y),
 		i32(entity.rect.width),
 		i32(entity.rect.height),
 		rl.RED,
-	)
+	)*/
+
 	font_size := get_scaled_font_size()
 	spacing := f32(1)
 	pad := f32(10)
@@ -118,7 +118,6 @@ debug_draw_entity :: proc(entity_handle: Entity_Handle, pos: Vec2) {
 		)
 	}
 }
-
 
 //Returns the information for the entity based on the info variable. 
 get_entity_info :: proc(entity_handle: Entity_Handle, info: cstring) -> cstring {

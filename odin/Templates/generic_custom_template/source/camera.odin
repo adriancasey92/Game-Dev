@@ -9,12 +9,6 @@ import rl "vendor:raylib"
 CAMERA_ZOOM_BASE :: f32(400)
 CAMERA_ZOOM: f32 = CAMERA_ZOOM_BASE
 CAMERA_ZOOM_MULT: f32 = 1
-CAMERA_ZOOM_MAX :: f32(250)
-CAMERA_ZOOM_MIN :: f32(50)
-
-//UI SCALE
-UI_SCALE_MULT: f32 = 1
-UI_SCALE_BASE :: f32(1)
 
 // Camera that focuses on either the player, bounded by the current chunk
 // or the center of the current chunk
@@ -32,6 +26,10 @@ ui_camera :: proc() -> rl.Camera2D {
 within_camera_bounds :: proc(entity_handle: Entity_Handle) -> bool {
 	cam := game_camera()
 	entity := hm.get(g.entities, entity_handle)
+	if entity == nil {
+		fmt.printf("within_camera_bounds: Entity with handle %d not found\n", entity_handle)
+		return false
+	}
 	pos := entity.pos
 	size := entity.size
 
@@ -51,12 +49,14 @@ within_camera_bounds :: proc(entity_handle: Entity_Handle) -> bool {
 //Todo - Fix update camera to lock to chunks? 
 update_camera :: proc() {
 	current_chunk := level.player_chunk
-	w := f32(rl.GetScreenWidth())
+	w := f32(CHUNK_SIZE * TILE_SIZE)
 	h := f32(rl.GetScreenHeight())
 	zoom := f32(h / (CAMERA_ZOOM_BASE * CAMERA_ZOOM_MULT))
+	target := get_player().pos
+	offset := Vec2{f32(rl.GetScreenWidth()) / 2, h / 1.5}
 	g.game_camera = {
 		zoom   = zoom,
-		target = get_player().pos,
-		offset = {w / 2, h / 2},
+		target = target,
+		offset = offset,
 	}
 }

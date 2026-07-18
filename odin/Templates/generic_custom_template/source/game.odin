@@ -27,40 +27,52 @@ created.
 
 package game
 
+// Imports
 import hm "../handle_map"
 import "core:fmt"
 import rand "core:math/rand"
 import "core:mem"
 import rl "vendor:raylib"
 
-//Struct definitions from raylib
+// Struct definitions from raylib
 Vec2 :: rl.Vector2
 Vec4 :: rl.Vector4
 Rect :: rl.Rectangle
 
-//WINDOW GLOBALS
+
+// CONSTANTS
+// Window
 PIXEL_WINDOW_HEIGHT :: 180
 WIDTH :: i32(1680)
 HEIGHT :: i32(1050)
 
-//GAME GLOBALS
+// Game
 GRAVITY :: f32(500)
 USE_GRAVITY :: false
 PAUSE: bool
-//FONT
+
+// Font
 BASE_FONT_SIZE: i32 = 20
 
-//ATLAS BUILDER
+/*
+ ATLAS BUILDER
+ These are used to load data that our atlas builder generates. 
+ The atlas builder compiles the raw data of the atlas into our game,
+ so we can load it at runtime without needing to read files.
+*/
+// Atlas (textures, sprites, fonts)
 ATLAS_DATA :: #load("atlas.png")
+
+// Sounds
 MENU_MOVE :: #load("../assets/sounds/menu_move.wav")
 /*HIT_SOUND :: #load("../assets/sounds/hit.wav")
 LAND_SOUND :: #load("../assets/sounds/land.wav")
 WIN_SOUND :: #load("../assets/sounds/win.wav")*/
 
+// Controls game state
 Game_State :: enum {
 	intro,
 	play,
-	quadtree,
 	options,
 	audio_options,
 	graphics_options,
@@ -70,11 +82,16 @@ Game_State :: enum {
 	mainMenu,
 }
 
+// Edit screen struct for level editor. 
+// This is used to store the state of the editor when we are in it.
+// TODO - 
+// 
 Edit_Screen :: struct {
 	//menu:          Menu,
 	selection_idx: i32,
 }
 
+// Struct for platforms in the level editor.
 Edit_Platforms :: struct {
 	uid:       u32,
 	texture:   rl.Texture,
@@ -83,6 +100,8 @@ Edit_Platforms :: struct {
 	mouseOver: bool,
 }
 
+// Main game memory struct. 
+// This is where all of our game state and resources are stored.
 Game_Memory :: struct {
 	//Game state
 	state:             Game_State,
@@ -91,8 +110,6 @@ Game_Memory :: struct {
 	level_num:         i32,
 	won:               bool,
 	game_camera:       rl.Camera2D,
-	settings_sound:    Sound_Settings,
-	settings_graphics: Graphics_Settings,
 
 	//Resources
 	atlas:             rl.Texture2D,
@@ -127,17 +144,19 @@ Game_Memory :: struct {
 	//particles?
 	particle_system:   Particle_System,
 
-	//shader
+	// Shader
+	/*
 	frog_shader:       rl.Shader,
 	background_shader: rl.Shader,
 	shader_time:       f32,
+	*/
 	render_target:     rl.RenderTexture2D,
 
-	//current time
+	// Current time
 	current_time:      f64,
 }
 
-//Global variables
+// Global variables
 edit_tex: i32
 atlas: rl.Texture2D
 hit_sound: rl.Sound
@@ -172,12 +191,16 @@ init :: proc() {
 	//Allocate memory for game memory struct
 	g = new(Game_Memory)
 
-	init_shaders()
+	// Shader stuff - TODO
+	//init_shaders()
 
 	//load our texture atlas, defer unloading the memory. 
 	atlas_image := rl.LoadImageFromMemory(".png", raw_data(ATLAS_DATA), i32(len(ATLAS_DATA))) //load the raw data into atlas_image
 	defer (rl.UnloadImage(atlas_image))
 
+
+	// Initialize game memory struct
+	// Set default values here
 	g^ = Game_Memory {
 		state = .mainMenu,
 		atlas = rl.LoadTextureFromImage(atlas_image),
@@ -218,11 +241,14 @@ init :: proc() {
 		glyphs       = raw_data(glyphs),
 	}
 
-	// Set up current level
-	init_menu()
+	// Create menus
+	init_all_menus()
+
+	// Init Level
 	init_level(&g.level)
 
-	fmt.printf("Player Pos: %v\n", level.player_pos)
+
+	//fmt.printf("Player Pos: %v\n", level.player_pos)
 	game_hot_reloaded(g)
 }
 
@@ -260,8 +286,6 @@ update :: proc() {
 		if !PAUSE {
 			update_play()
 		}
-	case .quadtree:
-		update_quadtree()
 	case .options:
 		update_menu_generic(&g.options_menu)
 	case .audio_options:
@@ -273,7 +297,7 @@ update :: proc() {
 	case .pause:
 		update_menu_generic(&g.pause_menu)
 	case .level_editor:
-		update_level_editor()
+	//update_level_editor()
 	}
 }
 
@@ -282,7 +306,6 @@ update_play :: proc() {
 	dt = rl.GetFrameTime()
 	real_dt = dt
 
-	//update_level(&g.level, dt)
 
 	if rl.IsMouseButtonPressed(.LEFT) {
 		m_pos_world := rl.GetScreenToWorld2D(rl.GetMousePosition(), game_camera())
@@ -292,6 +315,7 @@ update_play :: proc() {
 				if h == g.player_handle {
 					//we clicked on the player
 					fmt.printf("Clicked on player!\n")
+					fmt.printf("Clicked on entity with handle: %v\nof type: %v\n", h, e.kind)
 				} else {
 					//we clicked on another entity
 					fmt.printf("Clicked on entity with handle: %v\nof type: %v\n", h, e.kind)
@@ -299,23 +323,27 @@ update_play :: proc() {
 				}
 			}
 		}
-		if rl.CheckCollisionPointRec(m_pos_world, get_player().rect) {
+
+		/*if rl.CheckCollisionPointRec(m_pos_world, get_player().rect) {
 			//DO ENTITY STUFF
 			debug_draw_entity(g.player_handle, get_player().pos)
-			fmt.printf("Clicked on player2!\n")
-		}
+			//fmt.printf("Clicked on player2!\n")
+		}*/
 	}
 
 	if rl.IsMouseButtonPressed(.RIGHT) {
 		//Spawn random enemy around player
 		p_pos := get_player().pos
 
+		current_chunk := level.active_chunks[level.player_chunk]
+
 		for i := 0; i < 1000; i += 1 {
 			spawn_pos := Vec2 {
 				p_pos.x + rand.float32_range(-200, 200),
 				p_pos.y + rand.float32_range(-200, 200),
 			}
-			create_bullfrog(spawn_pos)
+			handle := create_bullfrog(spawn_pos)
+			append(&current_chunk.entities, handle)
 		}
 
 	}
@@ -345,8 +373,8 @@ update_play :: proc() {
 		//delete_current_level()
 		g.state = .pause
 		//g.in_menu = !g.in_menu
-		g.finished = false
-		g.won = false
+		//g.finished = false
+		//g.won = false
 		return
 	}
 	//finished?
@@ -394,31 +422,32 @@ update_play :: proc() {
 	}*/
 
 	//Update player
-	update_entities(dt)
+	//update_entities(dt)
 	//update_player(dt)
+	update_level(&g.level, dt)
+
 }
 
-update_quadtree :: proc() {
+/*update_quadtree :: proc() {
 	fmt.printf("Update quadtree\n")
 	dt = rl.GetFrameTime()
 	real_dt = dt
 
 	build_quadtree()
-}
+}*/
 
 //main draw function
 draw :: proc() {
 	//used when inside menu to fade background images
 	fade: f32
 	fade = 1
+	ENTITES_DRAWN = 0
 	#partial switch (g.state) 
 	{
 	case .mainMenu:
 		draw_menu_generic(&g.main_menu, fade)
 	case .play:
 		draw_play(fade)
-	case .quadtree:
-		draw_quadtree()
 	case .options:
 		draw_menu_generic(&g.options_menu, fade)
 	case .audio_options:
@@ -431,7 +460,7 @@ draw :: proc() {
 		//we still draw the game in the background with a fade
 		draw_menu_generic(&g.pause_menu, fade)
 	case .level_editor:
-		draw_level_editor()
+	//draw_level_editor()
 	}
 
 	font_size := get_scaled_font_size()
@@ -452,14 +481,14 @@ draw :: proc() {
 
 	text_size = rl.MeasureTextEx(
 		rl.GetFontDefault(),
-		rl.TextFormat("Entities Drawn: %i/%i", ENTITES_DRAWN, hm.len(g.entities)),
+		rl.TextFormat("Entities Drawn: %i/%i", ENTITES_DRAWN, hm.len(g.entities) - 1),
 		font_size,
 		MENU_SPACING,
 	)
 
 	rl.DrawTextEx(
 		rl.GetFontDefault(),
-		rl.TextFormat("Entities Drawn: %i/%i", ENTITES_DRAWN, hm.len(g.entities)),
+		rl.TextFormat("Entities Drawn: %i/%i", ENTITES_DRAWN, hm.len(g.entities) - 1),
 		{
 			f32(rl.GetScreenWidth()) - (text_size.x + 10),
 			f32(rl.GetScreenHeight()) - (text_size.y + 40),
@@ -471,14 +500,14 @@ draw :: proc() {
 
 	text_size = rl.MeasureTextEx(
 		rl.GetFontDefault(),
-		rl.TextFormat("Entities: %i", hm.len(g.entities)),
+		rl.TextFormat("Entities: %i", hm.len(g.entities) - 1),
 		font_size,
 		MENU_SPACING,
 	)
 
 	rl.DrawTextEx(
 		rl.GetFontDefault(),
-		rl.TextFormat("Entities: %i", hm.len(g.entities)),
+		rl.TextFormat("Entities: %i", hm.len(g.entities) - 1),
 		{
 			f32(rl.GetScreenWidth()) - (text_size.x + 10),
 			f32(rl.GetScreenHeight()) - (text_size.y + 10),
@@ -510,9 +539,12 @@ draw_play :: proc(fade: f32) {
 	//Draw using game_camera
 	rl.BeginMode2D(game_camera())
 	{
-		//draw_level(fade)
+		draw_level(fade)
+		draw_entities_in_level(fade)
 		draw_particle_system(&g.particle_system, fade)
-		draw_entities(fade)
+		rl.DrawLineEx({0, 2500}, {0, -2500}, 1, rl.BLACK)
+		rl.DrawLineEx({2500, 0}, {-2500, 0}, 1, rl.BLACK)
+		rl.DrawLineEx({-256, 2500}, {-256, -2500}, 1, rl.BLACK)
 	}
 	rl.EndMode2D()
 
@@ -545,25 +577,6 @@ draw_play :: proc(fade: f32) {
 	rl.EndDrawing()
 }
 
-draw_quadtree :: proc() {
-	/*
-	fade := f32(.9)
-	rl.BeginDrawing()
-	//rl.ClearBackground(rl.SKYBLUE)
-	//Draw using game_camera
-	draw_quad_tree(&quadtree)
-	rl.BeginMode2D(game_camera())
-	{
-		//draw_level(fade)
-		//draw_player(fade)
-	}
-	rl.EndMode2D()
-	rl.BeginMode2D(ui_camera())
-	rl.EndMode2D()
-	rl.EndDrawing()*/
-	fmt.printf("Draw quadtree - not implemented\n")
-}
-
 game_should_run :: proc() -> bool {
 	when ODIN_OS != .JS {
 		// Never run this proc in browser. It contains a 16 ms sleep on web!
@@ -580,6 +593,12 @@ refresh_globals :: proc() {
 	atlas = g.atlas
 	font = g.font
 	level = g.level
+	fmt.printf(
+		"Globals refreshed. Atlas: %v, Font: %v, Level.player_pos: %v",
+		atlas,
+		font,
+		level.player_pos,
+	)
 	//GLOB_player = hm.get(g.entities, g.player_handle)
 	//GLOB_player.anim = animation_create(.Frog_Move)
 }
@@ -623,10 +642,8 @@ reset_handles :: proc() {
 shutdown :: proc() {
 	fmt.printf("Shutdown...\n")
 	rl.UnloadRenderTexture(g.render_target)
-	rl.UnloadShader(g.frog_shader)
-	//delete(level.platforms)
-	//free(&level.platforms)
-	//delete(level.edit_screen.menu.nodes)
+	//rl.UnloadShader(g.frog_shader)
+
 
 	delete(g.level.collision_map)
 	for coord in level.active_chunks {
@@ -634,7 +651,6 @@ shutdown :: proc() {
 		delete(level.active_chunks[coord].decorations)
 	}
 	delete(g.level.active_chunks)
-
 
 	hm.delete(&g.entities)
 	mem.free(g.font.recs)

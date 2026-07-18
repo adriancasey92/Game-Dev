@@ -7,6 +7,7 @@ import rl "vendor:raylib"
 //creates the player entity and returns its handle
 create_player_entity :: proc(pos: Vec2) -> Entity_Handle {
 	fmt.printf("Creating player entity at position %v\n", pos)
+
 	g.player_handle = hm.add(
 		&g.entities,
 		Entity {
@@ -120,7 +121,8 @@ update_player :: proc(dt: f32) {
 
 	//Reset player position and states/actions
 	if rl.IsKeyPressed(.R) {
-		resetPlayer({0, 0})
+		fmt.printf("Resetting player position to %v\n", tile_pos_to_world_pos(g.level.player_pos))
+		resetPlayer(tile_pos_to_world_pos(g.level.player_pos))
 	}
 
 	//Hold onto walls?
@@ -313,8 +315,8 @@ update_player :: proc(dt: f32) {
 
 	//Tongue attack?	
 	if rl.IsMouseButtonPressed(.LEFT) {
-		create_attack_effect(&g.particle_system, p.pos, p.dir)
-		fmt.printf("Player Attac\n")
+		//create_attack_effect(&g.particle_system, p.pos, p.dir)
+		//fmt.printf("Player Attac\n")
 		/*if p.can_attack {
 			pos := rl.GetScreenToWorld2D(rl.GetMousePosition(), game_camera())
 			player_attack(pos)
@@ -700,25 +702,6 @@ rotate_player :: proc() {
 		}
 	}
 }
-
-/*player_attack :: proc(mp: Vec2) {
-	p := get_player()
-	if (p == nil) {
-		fmt.printf("ERR - player pointer is nil!\n")
-		return
-	}
-
-	fmt.printf("PLAYER_ATTACK\n")
-	//Center of player
-	//length of tongue in pixels?
-	attack_length := i32(10)
-
-	dest := calc_point(mp, player_center(), attack_length)
-	p.tongue.pos = dest
-	fmt.printf("MP pos: %.2f, %.2f\n", mp.x, mp.y)
-	fmt.printf("Tongue pos: %.2f, %.2f\n", dest.x, dest.y)
-	p.tongue.fired = true
-}*/
 
 //always draws the player using the player_handle
 draw_player :: proc(fade: f32) {

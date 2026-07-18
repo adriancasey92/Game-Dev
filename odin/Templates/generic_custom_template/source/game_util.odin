@@ -62,3 +62,12 @@ calc_point :: proc(mp, origin: Vec2, length: i32) -> Vec2 {
 	// Calculate point at given length along direction
 	return Vec2{origin.x + (dir.x * f32(length)), origin.y + (dir.y * f32(length))}
 }
+
+// Converts the chunk position in tile coordinates to the world position in pixel coordinates, centered within the tile
+tile_pos_to_world_pos :: proc(pos: Vec2) -> Vec2 {
+	world_width := f32(CHUNK_SIZE * TILE_SIZE)
+	world_min := 0 - (world_width / 2)
+	x_pos := world_min + (pos.x * TILE_SIZE) + (TILE_SIZE / 2)
+	y_pos := 0 - (pos.y * TILE_SIZE)
+	return Vec2{x_pos, y_pos}
+}

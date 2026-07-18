@@ -81,14 +81,6 @@ Visual_Chunk :: struct {
 	is_dirty:         bool, // Needs to be saved
 }
 
-//Chunks are 'stages' for each level. 
-//Camera will be centered on the chunk, and the chunk will be drawn
-//in the center of the screen.
-Level_Chunk :: struct {
-	camera_pos: Vec2,
-	//platforms:  []Platform,
-}
-
 // JSON structures for serialization
 JSON_Collision_Chunk :: struct {
 	chunk_x: i32,
@@ -96,9 +88,11 @@ JSON_Collision_Chunk :: struct {
 	tiles:   [CHUNK_SIZE][CHUNK_SIZE]u8, // Store as numbers for JSON
 }
 
+// chunk_pos is the x and y position of the entity within the chunk, in tile coordinates (0-31)
+// kind is the type of entity, which can be used to determine its behavior and appearance
 JSON_Entity :: struct {
-	pos:  [2]f32,
-	kind: EntityKind,
+	chunk_pos: [2]f32,
+	kind:      EntityKind,
 }
 
 JSON_Decoration :: struct {
@@ -118,35 +112,40 @@ JSON_Visual_Chunk :: struct {
 //initializes levels
 init_level :: proc(level: ^Level) {
 	fmt.printf("Init_level\n")
+
 	current_level := g.level_num
 	level.collision_map = make(map[ChunkCoord]Collision_Chunk)
 	level.active_chunks = make(map[ChunkCoord]Visual_Chunk)
 	level.chunk_update_interval = 0.1 // Update chunks 10 times per second
+
 	// Set world bounds (example: 1 chunk wide, 20 chunks tall)
 	level.world_bounds.min_chunk = {0, 0}
-	level.world_bounds.max_chunk = {0, 0}
-	fmt.printf("Level world bounds: min %v, max %v\n", level.world_bounds.min_chunk, level.world_bounds.max_chunk)
+	level.world_bounds.max_chunk = {0, 7}
+
 	for y := 0; y <= int(level.world_bounds.max_chunk.y); y += 1 {
 		level.collision_map[ChunkCoord{0, i32(y)}] = load_collision_chunk({0, i32(y)})
 	}
+
 	//start player at ground level 0,0
 	level.player_chunk = ChunkCoord{0, 0}
-	level.player_pos = {0, 0}
+	level.player_pos = tile_pos_to_world_pos({f32(1), f32(1)})
+	fmt.printf("Initial player world position: %v\n", level.player_pos)
+	get_player().pos = level.player_pos
 	for i := 0; i < int(level.player_chunk.y) + CHUNKS_ABOVE; i += 1 {
 		c := ChunkCoord{0, i32(i)}
 		level.active_chunks[c] = load_visual_chunk(&g.level, c, rl.GetTime())
-		load_visual_chunk(&g.level, c, rl.GetTime())
+		//load_visual_chunk(&g.level, c, rl.GetTime())
 	}
 }
 
 //Fade draws the level with a fade
 draw_level :: proc(fade: f32) {
 	//fmt.printf("Level.active_chunks size: %i\n", len(level.active_chunks))
-	/*for coord in level.active_chunks {
+	for coord in level.active_chunks {
 		chunk := level.active_chunks[coord]
 		draw_visual_chunk(coord, chunk, game_camera())
-	}*/
-	draw_entities(fade)
+	}
+	//draw_entities(fade)
 }
 
 load_collision_chunk :: proc(coord: ChunkCoord) -> Collision_Chunk {
@@ -248,7 +247,6 @@ ensure_collision_chunk_loaded :: proc(level: ^Level, coord: ChunkCoord) {
 }
 
 
-
 unload_distant_visual_chunks :: proc(level: ^Level, player_chunk: ChunkCoord, current_time: f64) {
 	chunks_to_remove := make([dynamic]ChunkCoord, context.temp_allocator)
 	for coord, chunk in level.active_chunks {
@@ -270,9 +268,9 @@ unload_distant_visual_chunks :: proc(level: ^Level, player_chunk: ChunkCoord, cu
 }
 
 // Main chunk management update
-update_chunks :: proc(game_memory: ^Game_Memory) {
-	level := &game_memory.level
-	current_time := game_memory.current_time
+update_chunks :: proc(level: ^Level) {
+	//level := &game_memory.level
+	current_time := g.current_time
 	// Skip update if not enough time has passed
 	if current_time - level.last_chunk_update < level.chunk_update_interval {return}
 	level.last_chunk_update = current_time
@@ -386,10 +384,10 @@ load_collision_chunk_from_json :: proc(coord: ChunkCoord) -> Collision_Chunk {
 		return generate_default_collision_chunk(coord)
 	}
 	defer delete(data)
-
+	defer free_all(context.temp_allocator)
 	// Parse JSON
 	json_chunk: JSON_Collision_Chunk
-	parse_error := json.unmarshal(data, &json_chunk)
+	parse_error := json.unmarshal(data, &json_chunk, allocator = context.temp_allocator)
 	if parse_error != nil {
 		fmt.printf("Failed to parse collision chunk JSON: %s, error: %v\n", filepath, parse_error)
 		return generate_default_collision_chunk(coord)
@@ -426,15 +424,16 @@ load_visual_chunk_from_json :: proc(coord: ChunkCoord) -> Visual_Chunk {
 	defer delete(filepath)
 
 	data, err := os.read_entire_file_from_filename_or_err(filepath)
-	if err!=nil{
+	if err != nil {
 		fmt.printf("Could not read visual chunk JSON: %s\n%s", filepath, err)
 		//return generate_default_visual_chunk(coord)
 	}
 	defer delete(data)
 
+	defer free_all(context.temp_allocator)
 	// Parse JSON
 	json_chunk: JSON_Visual_Chunk
-	parse_error := json.unmarshal(data, &json_chunk)
+	parse_error := json.unmarshal(data, &json_chunk, allocator = context.temp_allocator)
 	if parse_error != nil {
 		fmt.printf("Failed to parse visual chunk JSON: %s, error: %v\n", filepath, parse_error)
 		return generate_default_visual_chunk(coord)
@@ -460,8 +459,21 @@ load_visual_chunk_from_json :: proc(coord: ChunkCoord) -> Visual_Chunk {
 	// Convert entities
 	for json_entity in json_chunk.entities {
 		//create entity_handle 
-		entity := hm.add(&g.entities, Entity{pos = json_entity.pos, kind = json_entity.kind})
-		append(&chunk.entities, entity)
+		{
+			fmt.printf(
+				"Creating entity from JSON: kind=%v, pos=%v\n",
+				json_entity.kind,
+				json_entity.chunk_pos,
+			)
+			//create_bullfrog(json_entity.chunk_pos, json_entity.kind)
+			//entity := create_entity(json_entity.chunk_pos, json_entity.kind)
+			//append(&chunk.entities, entity)
+			entity := hm.add(
+				&g.entities,
+				Entity{pos = json_entity.chunk_pos, kind = json_entity.kind},
+			)
+			append(&chunk.entities, entity)
+		}
 	}
 
 	// Convert decorations
@@ -543,8 +555,8 @@ save_visual_chunk_to_json :: proc(coord: ChunkCoord, chunk: Visual_Chunk) {
 	for entity, i in chunk.entities {
 		e := hm.get(g.entities, entity)
 		json_chunk.entities[i] = JSON_Entity {
-			pos  = e.pos,
-			kind = e.kind,
+			chunk_pos = e.pos,
+			kind      = e.kind,
 		}
 	}
 
@@ -620,7 +632,7 @@ load_visual_chunk_binary :: proc(coord: ChunkCoord) -> Visual_Chunk {
 		for x in 0 ..< CHUNK_SIZE {
 			chunk.sprites[y][x] = cast(Sprite_ID)(cast(^u32)&data[offset])^
 			offset += 4
-			fmt.printf("Sprite at (%d, %d): %d\n",x, y, chunk.sprites[y][x])
+			fmt.printf("Sprite at (%d, %d): %d\n", x, y, chunk.sprites[y][x])
 		}
 	}
 	// Read entities
@@ -781,11 +793,16 @@ generate_default_visual_chunk :: proc(coord: ChunkCoord) -> Visual_Chunk {
 //update the level entities
 update_level :: proc(level: ^Level, dt: f32) {
 	// Update entities in active chunks
+	//update_player(dt)
+	update_chunks(level)
 	for coord in level.active_chunks {
 		chunk := &level.active_chunks[coord]
 		for entity_handle in chunk.entities {
-			update_entity_generic(entity_handle, dt)
-			//hm.set(g.entities, entity_handle, entity)
+			// Skip player 
+			if (entity_handle.idx != 1) {
+				update_entity_generic(entity_handle, dt)
+				continue
+			}
 		}
 	}
 }
