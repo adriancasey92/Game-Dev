@@ -1,6 +1,5 @@
+#+feature using-stmt
 package main
-
-
 import "core:fmt"
 import "core:math"
 import "core:math/linalg"
@@ -47,6 +46,7 @@ main :: proc() {
 	//Initialise our Game State paddle, ball positions.
 	reset(&gs)
 	//using namestate gs (NOT RECOMMENDED FOR FUTURE CODE)
+
 	using gs
 	rl.InitWindow(i32(window_size.x), i32(window_size.y), "Pong") //Initialise raylib window object. We are casting to i32 type as that is //the required size for creating window
 	rl.SetTargetFPS(60)
